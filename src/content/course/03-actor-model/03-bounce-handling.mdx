@@ -1,0 +1,157 @@
+---
+title: "Bounce Handling и Error Recovery"
+description: "Как обрабатывать ошибки в асинхронных message chains: bounce messages, compensation, и recovery"
+order: 3
+difficulty: "advanced"
+estimatedTime: 18
+topics: ["Bounce", "Error Handling", "Recovery", "Compensation"]
+---
+
+# Bounce Handling и Error Recovery
+
+## Проблема: ошибки в async chains
+
+В синхронных системах ошибка = exception → try/catch → rollback. В TON каждый шаг — отдельная транзакция. Если шаг 3 из 5 упал — шаги 1 и 2 **уже выполнены и необратимы**.
+
+```
+Проблема:
+Step 1: [OK] User → DEX: отправил 100 USDT     (необратимо)
+Step 2: [OK] DEX: рассчитал курс                (необратимо)
+Step 3: [NO] DEX → User: отправка TON — FAIL    (контракт не существует?)
+                                                
+Результат: User потерял 100 USDT, TON не получил
+```
+
+## Bounce Messages: автоматический safety net
+
+Когда контракт получает internal message с `bounce: true` и **не может его обработать** (бросил exception), TON автоматически создаёт **bounce message**:
+
+<DiagramContainer title="Bounce Message Flow" className="my-6">
+  <FlowColumn className="p-4 gap-1">
+    <FlowRow className="gap-3 justify-center">
+      <Tooltip content="Contract A отправляет сообщение с bounce: true">
+        <FlowNode variant="process">Contract A</FlowNode>
+      </Tooltip>
+      <Arrow direction="right" />
+      <Tooltip content="Сообщение с bounce: true и value">
+        <FlowNode variant="process">msg (bounce: true)</FlowNode>
+      </Tooltip>
+      <Arrow direction="right" />
+      <Tooltip content="Contract B не смог обработать — бросил исключение">
+        <FlowNode variant="output">Contract B <Icon name="alert" className="text-red-400" size="1.2em" /> FAIL</FlowNode>
+      </Tooltip>
+    </FlowRow>
+    <div className="flex justify-center">
+      <Arrow direction="down" />
+    </div>
+    <FlowRow className="gap-3 justify-center">
+      <Tooltip content="TON автоматически генерирует bounce message обратно к A">
+        <FlowNode variant="input">Contract A</FlowNode>
+      </Tooltip>
+      <Arrow direction="right" />
+      <Tooltip content="Bounce msg: bounced=true, original body (первые 256 бит)">
+        <FlowNode variant="process">bounce msg <Icon name="refresh" className="text-blue-400" size="1.2em" /></FlowNode>
+      </Tooltip>
+      <Arrow direction="right" />
+      <Tooltip content="Contract A обрабатывает bounce — компенсация">
+        <FlowNode variant="output">A: handle bounce → refund</FlowNode>
+      </Tooltip>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+### Что содержит bounce message
+
+```
+Bounce message:
+- bounced: true (флаг — это bounce, не обычное сообщение)
+- src: адрес Contract B (откуда bounced)
+- value: остаток value после вычета gas
+- body: первые 256 бит оригинального body (для идентификации)
+```
+
+## Bounce Handler Pattern
+
+Каждый контракт, отправляющий critical messages, должен иметь bounce handler:
+
+```javascript
+// Паттерн bounce handler
+recv_internal(msg) {
+  // Проверяем: это bounce message?
+  if (msg.bounced) {
+    // Прочитать op из bounced body
+    int op = msg.body.read_uint(32);
+    int query_id = msg.body.read_uint(64);
+    
+    // Компенсация в зависимости от операции
+    if (op == op::internal_transfer) {
+      // Transfer не удался — вернуть баланс
+      self.balance += msg.original_amount;
+      // Уведомить пользователя
+      emit_log("transfer_failed", query_id);
+    }
+    return;
+  }
+  
+  // Нормальная обработка сообщений...
+}
+```
+
+<Callout type="warning">
+**Ограничения bounce**
+
+1. Bounce body содержит только **первые 256 бит** оригинального сообщения — может быть недостаточно для идентификации
+2. Bounce message тоже стоит gas — если value недостаточно, bounce не отправится
+3. External messages **не bounceются** — нет адреса возврата
+4. Bounce **не каскадный** — если bounce handler тоже бросит исключение, второго bounce не будет
+</Callout>
+
+## Error Recovery Strategies
+
+### Strategy 1: Compensation (Saga)
+
+При ошибке — выполнить обратное действие:
+
+```
+Transfer failed (bounce):
+  → Вернуть баланс отправителю
+  → Обновить pending state
+```
+
+### Strategy 2: Retry with state
+
+Сохранить pending операцию и повторить:
+
+```
+Retry pattern:
+  → Сохранить pending_operation в state
+  → При bounce — increment retry_count
+  → Если retry_count < MAX_RETRIES — повторить с увеличенным gas
+  → Если retry_count >= MAX_RETRIES — compensation
+```
+
+### Strategy 3: Admin intervention
+
+Для критических ситуаций — pause + admin recovery:
+
+```
+Emergency pattern:
+  → Обнаружена критическая ошибка
+  → Контракт переходит в PAUSED state
+  → Только admin может вызвать recovery function
+  → Admin анализирует ситуацию и вызывает refund/resume
+```
+
+## Design Checklist для Error Handling
+
+| Проверка | Описание | Критичность |
+|----------|---------|-------------|
+| Все internal messages с bounce:true? | Если нет — средства теряются при ошибке | Critical |
+| Bounce handler реализован? | Обработка bounce для каждого типа сообщения | Critical |
+| Gas достаточно для bounce? | Value > compute + forward + bounce gas | High |
+| Timeout для pending операций? | Что если ответ никогда не придёт? | High |
+| Admin recovery для critical paths? | Паузa + ручное восстановление при catastrophic failure | High |
+
+<KnowledgeCheck>
+Bounce handling — это не опция, а необходимость. Каждый TON-контракт должен обрабатывать bounce messages для каждого типа отправленного сообщения. Без этого — lost funds. В следующем уроке: state machines и как проектировать multi-step операции с чётким контролем состояния.
+</KnowledgeCheck>

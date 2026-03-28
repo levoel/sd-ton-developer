@@ -1,0 +1,61 @@
+{
+  "lessonSlug": "04-contract-sharding/05-custom-sharded-contracts",
+  "moduleId": "04-contract-sharding",
+  "_meta": {
+    "idPrefix": "sdton-m04-05"
+  },
+  "questions": [
+    {
+      "id": "sdton-m04-05-q1",
+      "type": "multiple-choice",
+      "question": "Вы проектируете Loyalty Points system. Каждый пользователь имеет баланс очков и tier. Что должен хранить Master контракт?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Только global state: exchange_rate, max_points, total_issued, admin. Per-user state (points, tier) — в отдельных Child контрактах"
+        },
+        {
+          "id": "b",
+          "text": "Все балансы пользователей и их tier-ы"
+        },
+        {
+          "id": "c",
+          "text": "Ничего — всё в off-chain базе данных"
+        },
+        {
+          "id": "d",
+          "text": "Только адреса всех child контрактов"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Master = global config only. Per-user state (points, tier, history) в Child контрактах. Принцип: Master хранит GLOBAL, Child хранит PER-USER. Хранение адресов children в Master (вариант d) не нужно — адреса вычислимы deterministically.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m04-05-q2",
+      "type": "multiple-choice",
+      "question": "Master деплоит Child контракт. Какую ошибку чаще всего делают при расчёте gas для deploy message?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Отправляют слишком много gas — перерасход"
+        },
+        {
+          "id": "b",
+          "text": "Не учитывают, что Child-контракт нуждается в начальном балансе для survival: compute_gas + storage_deposit + safety_margin. Без начального баланса Child будет немедленно заморожен storage fees"
+        },
+        {
+          "id": "c",
+          "text": "Используют wrong workchain ID"
+        },
+        {
+          "id": "d",
+          "text": "Забывают указать bounce: true"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Child контракт сразу после deploy начинает платить storage fee. Если Master отправил ровно compute_gas — после deploy баланс Child ≈ 0, и он будет заморожен. Нужно: compute_gas (для deploy) + storage_deposit (для выживания, обычно ~0.05 TON) + safety_margin.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

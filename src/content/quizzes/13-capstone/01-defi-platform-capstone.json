@@ -1,0 +1,35 @@
+{
+  "lessonSlug": "13-capstone/01-defi-platform-capstone",
+  "moduleId": "13-capstone",
+  "_meta": {
+    "idPrefix": "sdton-m13-01"
+  },
+  "questions": [
+    {
+      "id": "sdton-m13-01-q1",
+      "type": "multiple-choice",
+      "question": "В DeFi platform design, DEX TWAP oracle используется Lending module для price feeds. Какой cross-module integration risk?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Нет рисков — TWAP always accurate"
+        },
+        {
+          "id": "b",
+          "text": "TWAP не может использоваться для lending"
+        },
+        {
+          "id": "c",
+          "text": "DEX pool manipulation → distorted TWAP → unfair liquidation. Mitigation: multi-source oracle (DEX TWAP + external feed), staleness check, deviation alert"
+        },
+        {
+          "id": "d",
+          "text": "Lending и DEX не должны интегрироваться"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "Cross-module dependency: if DEX pool is low-liquidity, price can be manipulated → TWAP distorted → lending liquidation triggers unfairly. Mitigation: 1) Multi-source (DEX TWAP + Pyth), 2) Deviation check (reject if sources diverge > 5%), 3) Min liquidity requirement for oracle pool, 4) Staleness check.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

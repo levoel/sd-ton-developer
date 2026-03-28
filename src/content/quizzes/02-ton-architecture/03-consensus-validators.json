@@ -1,0 +1,43 @@
+{
+  "lessonSlug": "02-ton-architecture/03-consensus-validators",
+  "moduleId": "02-ton-architecture",
+  "_meta": {
+    "idPrefix": "sdton-m02-03"
+  },
+  "questions": [
+    {
+      "id": "sdton-m02-03-q1",
+      "type": "multiple-choice",
+      "question": "Почему TON выбирает ~350 валидаторов, а не 1M+ как Ethereum?",
+      "options": [
+        {
+          "id": "a",
+          "text": "TON не может поддерживать больше валидаторов технически"
+        },
+        {
+          "id": "b",
+          "text": "350 валидаторов безопаснее, чем 1M"
+        },
+        {
+          "id": "c",
+          "text": "У TON недостаточно стейкеров"
+        },
+        {
+          "id": "d",
+          "text": "Trade-off: ограниченный validator set обеспечивает fast finality (~5 сек) и high throughput. Больше валидаторов = больше latency для BFT consensus"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "BFT consensus требует коммуникации между валидаторами (O(N²) messages). При 350 валидаторах — это управляемо и обеспечивает ~5 сек finality. При 1M+ — consensus занял бы минуты. Ethereum компенсирует это через committee-based attestation, но всё равно имеет ~12 сек block time и epoch-based finality.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m02-03-q2",
+      "type": "true-false",
+      "question": "DEX swap, задействующий контракты в трёх разных шардах, может финализироваться за ~5 секунд — столько же, сколько single-shard транзакция.",
+      "correctAnswer": false,
+      "explanation": "Каждый cross-shard hop добавляет ~5 секунд (один блок masterchain). Swap через 3 контракта в разных шардах = 3 messages × ~5 сек = до ~15 сек. При проектировании DeFi — минимизируйте число cross-shard messages для критичных операций.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

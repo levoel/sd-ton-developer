@@ -1,0 +1,43 @@
+{
+  "lessonSlug": "03-actor-model/04-state-machines",
+  "moduleId": "03-actor-model",
+  "_meta": {
+    "idPrefix": "sdton-m03-04"
+  },
+  "questions": [
+    {
+      "id": "sdton-m03-04-q1",
+      "type": "multiple-choice",
+      "question": "DEX контракт использует implicit state: 'if (pending_amount > 0) { // видимо, ждём token }'. Почему это anti-pattern?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Implicit state не компилируется в TVM"
+        },
+        {
+          "id": "b",
+          "text": "Implicit state несовместим с bounce"
+        },
+        {
+          "id": "c",
+          "text": "Implicit state использует больше gas"
+        },
+        {
+          "id": "d",
+          "text": "Implicit state непрозрачен: pending_amount > 0 может быть из-за swap, refund, или ошибки — нет ясности, в каком состоянии контракт. Explicit state (enum) однозначно описывает текущий этап операции"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "Implicit state (определение состояния по значениям полей) создаёт ambiguity: pending_amount > 0 — это swap в процессе? refund? ошибочное состояние? Explicit state machine (enum: IDLE, AWAITING_TOKEN, EXECUTING, REFUNDING) однозначно указывает этап и какие messages допустимы в каждом состоянии.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m03-04-q2",
+      "type": "true-false",
+      "question": "В правильно спроектированном state machine для TON контракта, каждое pending state (AWAITING_TOKEN, EXECUTING) должно иметь timeout — deadline, после которого операция отменяется.",
+      "correctAnswer": true,
+      "explanation": "Без timeout контракт может застрять в pending state навсегда, если ожидаемое сообщение никогда не придёт (контракт-получатель уничтожен, gas недостаточно для ответа). Timeout обеспечивает eventual completion: по истечении deadline — compensation/refund → IDLE.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

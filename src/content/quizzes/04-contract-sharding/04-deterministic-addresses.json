@@ -1,0 +1,43 @@
+{
+  "lessonSlug": "04-contract-sharding/04-deterministic-addresses",
+  "moduleId": "04-contract-sharding",
+  "_meta": {
+    "idPrefix": "sdton-m04-04"
+  },
+  "questions": [
+    {
+      "id": "sdton-m04-04-q1",
+      "type": "multiple-choice",
+      "question": "dApp хочет показать баланс Jetton Alice. Как найти адрес Alice's Jetton Wallet наиболее эффективно?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Перебрать все контракты в блокчейне"
+        },
+        {
+          "id": "b",
+          "text": "Отправить on-chain транзакцию в Master"
+        },
+        {
+          "id": "c",
+          "text": "Запросить у Alice её wallet address"
+        },
+        {
+          "id": "d",
+          "text": "Вызвать Master.get_wallet_address(alice) — бесплатный off-chain get-method, который вычисляет deterministic address"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "Get-method — бесплатный off-chain вызов. Master вычисляет hash(wallet_code + init_data(alice, master)) и возвращает адрес. Затем dApp может вызвать wallet.get_wallet_data() для получения баланса. Оба вызова бесплатны и мгновенны.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m04-04-q2",
+      "type": "true-false",
+      "question": "Deterministic address контракта на TON остаётся неизменным после deployment, даже если контракт обновит свой code через setCode.",
+      "correctAnswer": true,
+      "explanation": "Верно. Адрес = hash(initial_state_init). Даже если контракт обновит свой code после deployment (через setCode), адрес остаётся прежним — он вычислен из НАЧАЛЬНОГО state_init, а не текущего. Это критично для deterministic address pattern: вы можете предсказать адрес до deployment и он никогда не изменится.",
+      "bloomLevel": "conceptual"
+    }
+  ]
+}

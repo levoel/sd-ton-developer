@@ -1,0 +1,61 @@
+{
+  "lessonSlug": "07-defi-design/02-dex-amm-design",
+  "moduleId": "07-defi-design",
+  "_meta": {
+    "idPrefix": "sdton-m07-02"
+  },
+  "questions": [
+    {
+      "id": "sdton-m07-02-q1",
+      "type": "multiple-choice",
+      "question": "Pool содержит 100,000 TON и 150,000 USDT. User хочет купить TON за 10,000 USDT. Какой примерный price impact?",
+      "options": [
+        {
+          "id": "a",
+          "text": "~6.25% — output = 100,000 × 10,000 / (150,000 + 10,000) = 6,250 TON. Ожидалось 6,666 TON (по текущей цене 1.5). Impact = (6666-6250)/6666 ≈ 6.25%"
+        },
+        {
+          "id": "b",
+          "text": "0% — AMM не имеет price impact"
+        },
+        {
+          "id": "c",
+          "text": "0.3% — равен swap fee"
+        },
+        {
+          "id": "d",
+          "text": "50% — pool слишком мал для этого swap"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Constant product: x × y = k. Output = y × dx / (x + dx) = 100,000 × 10,000 / (150,000 + 10,000) = 6,250 TON. По текущей цене 1 TON = 1.5 USDT, ожидалось 10,000/1.5 = 6,666 TON. Разница: (6666-6250)/6666 = 6.25% price impact. Плюс 0.3% fee сверху.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m07-02-q2",
+      "type": "multiple-choice",
+      "question": "User отправил swap с min_output=6000 TON. Pool рассчитал output=5800 TON (slippage из-за concurrent swap). Что произойдёт?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Swap выполнится с output 5800 — user получит меньше ожидаемого"
+        },
+        {
+          "id": "b",
+          "text": "Pool проверит: 5800 < min_output(6000) → REFUND. Входные токены возвращаются пользователю через bounce/refund message"
+        },
+        {
+          "id": "c",
+          "text": "Транзакция будет ждать пока price вернётся"
+        },
+        {
+          "id": "d",
+          "text": "Pool выполнит swap по старой цене"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Slippage protection: pool сравнивает calculated_output (5800) с min_output (6000). 5800 < 6000 → slippage exceeded → pool НЕ выполняет swap → refund входных токенов пользователю. Пользователь может retry с более высоким slippage tolerance или меньшим amount.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

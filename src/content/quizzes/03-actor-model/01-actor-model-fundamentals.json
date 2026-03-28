@@ -1,0 +1,69 @@
+{
+  "lessonSlug": "03-actor-model/01-actor-model-fundamentals",
+  "moduleId": "03-actor-model",
+  "_meta": {
+    "idPrefix": "sdton-m03-01"
+  },
+  "questions": [
+    {
+      "id": "sdton-m03-01-q1",
+      "type": "multiple-choice",
+      "question": "Почему reentrancy attack (как DAO hack на Ethereum) невозможна на TON?",
+      "options": [
+        {
+          "id": "a",
+          "text": "TON использует более безопасный язык программирования"
+        },
+        {
+          "id": "b",
+          "text": "TON имеет встроенную защиту от всех атак"
+        },
+        {
+          "id": "c",
+          "text": "Actor Model: контракт обрабатывает сообщения строго по одному, последовательно. Пока текущее сообщение не обработано — следующее не начнёт выполняться"
+        },
+        {
+          "id": "d",
+          "text": "Reentrancy невозможна в любом блокчейне, не только TON"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "В Ethereum злонамеренный контракт может вызвать функцию жертвы рекурсивно до завершения первого вызова (reentrancy). На TON это невозможно: каждое сообщение = отдельная транзакция, обработка строго последовательная. Второе сообщение начнёт обрабатываться только после полного завершения первого.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m03-01-q2",
+      "type": "multiple-choice",
+      "question": "Contract A хочет узнать баланс Contract B. Как это сделать на TON?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Вызвать B.get_balance() синхронно из Contract A"
+        },
+        {
+          "id": "b",
+          "text": "Прочитать state Contract B напрямую из storage"
+        },
+        {
+          "id": "c",
+          "text": "Использовать shared memory между контрактами"
+        },
+        {
+          "id": "d",
+          "text": "Отправить message в Contract B с запросом, Contract B ответит в следующей транзакции. Либо вызвать get-method off-chain"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "Actor Model: контракты полностью изолированы. A не может прочитать state B. Два подхода: 1) On-chain: отправить async message с запросом → B ответит в следующей транзакции. 2) Off-chain: вызвать get-method B через lite-server (бесплатно, но только для чтения из dApp).",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m03-01-q3",
+      "type": "true-false",
+      "question": "В TON external messages (off-chain → on-chain) не могут bounce обратно отправителю при ошибке, потому что у них нет on-chain адреса возврата.",
+      "correctAnswer": true,
+      "explanation": "Верно. External messages не bounceются — у них нет on-chain адреса возврата (отправитель = off-chain кошелёк). Если контракт не смог обработать external message — gas потрачен из баланса контракта, но никакого bounce не будет. Только internal messages с bounce: true могут bounceться.",
+      "bloomLevel": "conceptual"
+    }
+  ]
+}

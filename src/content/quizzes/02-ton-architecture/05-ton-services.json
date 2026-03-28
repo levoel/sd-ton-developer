@@ -1,0 +1,43 @@
+{
+  "lessonSlug": "02-ton-architecture/05-ton-services",
+  "moduleId": "02-ton-architecture",
+  "_meta": {
+    "idPrefix": "sdton-m02-05"
+  },
+  "questions": [
+    {
+      "id": "sdton-m02-05-q1",
+      "type": "multiple-choice",
+      "question": "Какой architectural pattern описывает хранение ownership и balances on-chain, а media и metadata — в TON Storage?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Monolithic pattern — всё в одном месте"
+        },
+        {
+          "id": "b",
+          "text": "Full off-chain — всё в TON Storage"
+        },
+        {
+          "id": "c",
+          "text": "Hybrid On-chain/Off-chain — critical state on-chain для trustless verification, large data off-chain для экономии"
+        },
+        {
+          "id": "d",
+          "text": "CQRS — разделение чтения и записи"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "Hybrid pattern: on-chain = minimum viable state для trustless verification (balances, ownership, access control), off-chain = large data (images, metadata, analytics). TON Storage и IPFS обеспечивают decentralized off-chain хранение с content-addressable URLs.",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "sdton-m02-05-q2",
+      "type": "true-false",
+      "question": "TON DNS домены (alice.ton) хранятся on-chain в smart contracts на блокчейне TON, а не на централизованных серверах.",
+      "correctAnswer": true,
+      "explanation": "Верно. TON DNS — полностью on-chain система. DNS записи хранятся в smart contracts на блокчейне TON. Каждый .ton домен — это NFT-подобный контракт, владелец которого контролирует записи. Никакой централизованной инфраструктуры для разрешения .ton доменов нет.",
+      "bloomLevel": "conceptual"
+    }
+  ]
+}

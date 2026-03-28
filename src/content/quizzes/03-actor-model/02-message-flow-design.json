@@ -1,0 +1,61 @@
+{
+  "lessonSlug": "03-actor-model/02-message-flow-design",
+  "moduleId": "03-actor-model",
+  "_meta": {
+    "idPrefix": "sdton-m03-02"
+  },
+  "questions": [
+    {
+      "id": "sdton-m03-02-q1",
+      "type": "multiple-choice",
+      "question": "Jetton transfer на TON требует 3 сообщения: User→SenderWallet→ReceiverWallet→ReceiverOwner. Пользователь отправляет 0.1 TON для gas. Почему может не хватить?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Каждый hop (3 сообщения) потребляет gas для compute + forward fee. 0.1 TON может не хватить для 3 hop-ов, особенно при cross-shard routing"
+        },
+        {
+          "id": "b",
+          "text": "0.1 TON всегда достаточно для любой операции на TON"
+        },
+        {
+          "id": "c",
+          "text": "Jetton transfer не стоит gas"
+        },
+        {
+          "id": "d",
+          "text": "Только первый hop стоит gas, остальные бесплатны"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Каждое сообщение в цепочке потребляет gas: compute_fee + forward_fee + storage_fee. При 3 hop-ах суммарный gas = 3 × (compute + forward). Cross-shard messages стоят больше. Правильный подход: рассчитать gas для всей цепочки, а терминальный контракт вернёт excess.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m03-02-q2",
+      "type": "multiple-choice",
+      "question": "Contract A отправляет msg1 → Contract B и msg2 → Contract C (в одной транзакции). B и C в разных шардах. Какой порядок обработки гарантирован?",
+      "options": [
+        {
+          "id": "a",
+          "text": "msg1 всегда обработается раньше msg2"
+        },
+        {
+          "id": "b",
+          "text": "Порядок не гарантирован — msg1 и msg2 могут обработаться в любом порядке, так как B и C в разных шардах"
+        },
+        {
+          "id": "c",
+          "text": "msg2 всегда обработается раньше msg1"
+        },
+        {
+          "id": "d",
+          "text": "Оба обработаются одновременно"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Cross-shard сообщения не имеют гарантии порядка. B и C в разных шардах обрабатывают транзакции независимо. msg1 может прибыть до или после msg2. Проектируйте для out-of-order delivery: каждый контракт должен работать корректно независимо от порядка получения.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

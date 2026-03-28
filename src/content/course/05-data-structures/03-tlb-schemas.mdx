@@ -1,0 +1,209 @@
+---
+title: "TL-B: язык описания схем данных"
+description: "Как читать и проектировать TL-B схемы для сообщений и state контрактов"
+order: 3
+difficulty: "advanced"
+estimatedTime: 20
+topics: ["TL-B", "Schema", "Type Language", "Data Definition"]
+---
+
+# TL-B: язык описания схем данных
+
+## Что такое TL-B
+
+**TL-B (Type Language — Binary)** — формальный язык описания структуры данных в cells. Это как Protocol Buffers или JSON Schema, но для бинарных cell trees.
+
+```
+TL-B определяет:
+1. Какие bits в какой cell
+2. Порядок полей
+3. Типы данных (uint, int, address, coins, ...)
+4. Где references на дочерние cells
+5. Conditional fields (Maybe, Either)
+```
+
+## Основной синтаксис
+
+<DiagramContainer title="TL-B Type System Overview">
+<Grid columns={3}>
+  <Tooltip content="Primitive Types — базовые типы данных. uint1...uint256 для unsigned integers, int1...int257 для signed. bits256 для фиксированных 256 bits (hashes). Размер известен на этапе компиляции">
+    <DataBox label="Primitive Types">
+      uint1-256 • int1-257 • bits256 • Fixed size at compile time
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="Address & Coins — специальные типы TON. MsgAddress: 267 bits, включает workchain + hash. Grams/VarUInteger 16: variable-length encoding для coin amounts (экономит bits для малых значений)">
+    <DataBox label="Address & Coins">
+      MsgAddress (267 bits) • Grams (variable-length) • VarUInteger 16
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="References — ссылки на дочерние cells. ^Cell: 0 bits в data (только reference). До 4 references per cell. Используйте для: large data, optional data, code cells">
+    <DataBox label="References (^Cell)">
+      0 bits in data • Max 4 per cell • For large/optional data
+    </DataBox>
+  </Tooltip>
+</Grid>
+<FlowRow>
+  <Tooltip content="Maybe X — optional field. 1 bit flag: 0 = absent (1 bit total), 1 = present (1 + sizeof(X) bits). Используйте для полей, которые часто пустые — экономит storage">
+    <FlowNode label="Maybe X (1 bit if absent)" />
+  </Tooltip>
+  <Arrow direction="right" />
+  <Tooltip content="Either X Y — union type. 1 bit flag выбирает вариант: 0 = X (inline data), 1 = Y (reference). Паттерн: Either Cell ^Cell = small data inline, large data in ref">
+    <FlowNode label="Either X Y (1 bit selector)" />
+  </Tooltip>
+  <Arrow direction="right" />
+  <Tooltip content="Op Codes (#prefix) — 32-bit идентификатор типа сообщения. transfer#f8a7ea5 = конкретный op code. Позволяет version routing: if (op == 0xf8a7ea5) handle_v1()">
+    <FlowNode label="Op Codes (#prefix)" />
+  </Tooltip>
+</FlowRow>
+</DiagramContainer>
+
+### Простой пример
+
+```
+// TL-B определение Jetton transfer message
+transfer#f8a7ea5 
+  query_id:uint64 
+  amount:(VarUInteger 16) 
+  destination:MsgAddress 
+  response_destination:MsgAddress 
+  custom_payload:(Maybe ^Cell) 
+  forward_ton_amount:(VarUInteger 16) 
+  forward_payload:(Either Cell ^Cell) 
+  = InternalMsgBody;
+```
+
+Разбор:
+- `transfer` — название типа
+- `#f8a7ea5` — op code (32-bit prefix)
+- `query_id:uint64` — поле query_id, тип uint64
+- `amount:(VarUInteger 16)` — variable-length unsigned integer
+- `destination:MsgAddress` — TON address
+- `(Maybe ^Cell)` — опциональная ссылка на cell
+- `(Either Cell ^Cell)` — inline или в reference
+
+### Ключевые типы TL-B
+
+| Тип | Описание | Bits |
+|-----|---------|------|
+| `uint1`...`uint256` | Unsigned integer | N bits |
+| `int1`...`int257` | Signed integer | N bits |
+| `bits256` | Fixed 256 bits | 256 |
+| `MsgAddress` | TON address | 267 |
+| `Grams` / `VarUInteger 16` | Coin amount | Variable |
+| `^Cell` | Reference to cell | 0 (reference, not data) |
+| `Maybe X` | Optional (1 bit flag + X) | 1 + sizeof(X) |
+| `Either X Y` | Union (1 bit flag + variant) | 1 + max(sizeof) |
+
+## Читаем TL-B схемы
+
+### Пример: NFT Item Data
+
+```
+// TL-B определение NFT Item state
+nft_item_data#_ 
+  index:uint64 
+  collection_address:MsgAddress 
+  owner_address:MsgAddress 
+  content:^Cell 
+  = NFTItemData;
+```
+
+Перевод:
+- `nft_item_data#_` — тип без explicit op code (`#_` = автоматический)
+- `index:uint64` — порядковый номер в коллекции
+- `collection_address:MsgAddress` — адрес Collection контракта
+- `owner_address:MsgAddress` — текущий владелец
+- `content:^Cell` — metadata (в отдельной referenced cell)
+
+### Расчёт размера
+
+```
+NFTItemData size:
+  index:         64 bits
+  collection:    267 bits
+  owner:         267 bits
+  content ref:   0 bits (reference, не data)
+  ─────────────────────
+  Total:         598 bits + 1 reference
+
+Помещается в одну cell? 598 < 1023 [OK]
+```
+
+## TL-B для System Design
+
+### 1. Проектирование message format
+
+Перед написанием кода — определите TL-B schema:
+
+```
+// Ваш custom protocol
+subscribe#a1b2c3d4 
+  query_id:uint64 
+  plan_id:uint8 
+  duration_months:uint16 
+  = SubscribeMsg;
+
+unsubscribe#b2c3d4e5 
+  query_id:uint64 
+  = UnsubscribeMsg;
+
+subscription_status#c3d4e5f6 
+  query_id:uint64 
+  plan_id:uint8 
+  expiry:uint32 
+  = StatusResponse;
+```
+
+### 2. State layout design
+
+TL-B для contract state:
+
+```
+// Subscription Master state
+subscription_master#_ 
+  admin:MsgAddress 
+  next_user_id:uint64 
+  total_subscribers:uint64 
+  plans:^Cell               // ref: plans dictionary
+  user_code:^Cell            // ref: child contract code
+  = SubscriptionMasterData;
+
+// Subscription Child state  
+subscription_user#_ 
+  owner:MsgAddress
+  master:MsgAddress
+  plan_id:uint8
+  expiry:uint32
+  total_paid:(VarUInteger 16)
+  = SubscriptionUserData;
+```
+
+### 3. Версионирование
+
+TL-B op codes позволяют **версионировать** протокол:
+
+```
+// Version 1
+transfer_v1#f8a7ea5 ... = InternalMsgBody;
+
+// Version 2 (новые поля)
+transfer_v2#f8a7ea6 ... memo:(Maybe ^Cell) = InternalMsgBody;
+
+// Контракт проверяет op code и выбирает handler:
+if (op == 0xf8a7ea5) { handle_v1(); }
+if (op == 0xf8a7ea6) { handle_v2(); }
+```
+
+<Callout type="tip">
+**Практическое правило**
+
+Всегда определяйте TL-B schema ПЕРЕД написанием кода. Это:
+1. Документирует протокол (другие контракты знают формат)
+2. Предотвращает ошибки сериализации
+3. Позволяет рассчитать gas заранее (знаем размер messages)
+4. Упрощает version migration
+</Callout>
+
+<KnowledgeCheck>
+TL-B — формальный язык для описания бинарных структур на TON. Он определяет формат messages и state. Для System Design: проектируйте TL-B schema перед кодом, рассчитывайте размеры для gas estimation, используйте op codes для версионирования. В следующих уроках: словари (HashmapE) и storage optimization.
+</KnowledgeCheck>

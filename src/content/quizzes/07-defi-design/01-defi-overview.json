@@ -1,0 +1,43 @@
+{
+  "lessonSlug": "07-defi-design/01-defi-overview",
+  "moduleId": "07-defi-design",
+  "_meta": {
+    "idPrefix": "sdton-m07-01"
+  },
+  "questions": [
+    {
+      "id": "sdton-m07-01-q1",
+      "type": "multiple-choice",
+      "question": "Почему flash loan attacks значительно менее вероятны на TON, чем на Ethereum?",
+      "options": [
+        {
+          "id": "a",
+          "text": "TON имеет встроенную защиту от всех DeFi атак"
+        },
+        {
+          "id": "b",
+          "text": "Flash loans на TON просто дороже"
+        },
+        {
+          "id": "c",
+          "text": "TON не поддерживает DeFi протоколы"
+        },
+        {
+          "id": "d",
+          "text": "Flash loans невозможны на TON — нет атомарности между контрактами. Без flash loans нельзя взять заём, манипулировать ценой и вернуть в одной транзакции"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "Flash loans требуют atomicity: взять кредит + использовать + вернуть в одной tx. На TON каждый вызов контракта = отдельная tx (async). Невозможно гарантировать возврат кредита в той же tx → flash loans невозможны → целый класс атак (oracle manipulation via flash loan, arbitrage attacks) исключён.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m07-01-q2",
+      "type": "true-false",
+      "question": "USDt на TON имеет circulation более $1 миллиарда, что делает его значимым stablecoin в экосистеме.",
+      "correctAnswer": true,
+      "explanation": "По данным 2026 года, USDt на TON имеет net circulation $1.4B+ и более 26 миллионов транзакций. Это делает USDt основным stablecoin в TON DeFi экосистеме, используемым для торговли, lending и расчётов.",
+      "bloomLevel": "conceptual"
+    }
+  ]
+}

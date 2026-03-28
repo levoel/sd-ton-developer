@@ -1,0 +1,158 @@
+---
+title: "TON Services: DNS, Storage, Proxy, Sites"
+description: "Вспомогательные сервисы TON как building blocks для System Design"
+order: 5
+difficulty: "intermediate"
+estimatedTime: 15
+topics: ["TON DNS", "TON Storage", "TON Proxy", "TON Sites", "Decentralized Services"]
+---
+
+# TON Services: DNS, Storage, Proxy, Sites
+
+## Больше, чем блокчейн
+
+TON — не просто блокчейн для смарт-контрактов. Это **платформа** с встроенными decentralized services:
+
+<DiagramContainer title="TON Services Ecosystem" className="my-6">
+  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4">
+    <Tooltip content="Human-readable имена для адресов: alice.ton → EQ...abc. Аналог DNS, но on-chain.">
+      <DataBox label="TON DNS" className="border-blue-500/30">
+        <div className="text-xs">
+          <div>alice.ton → wallet address</div>
+          <div>myapp.ton → contract</div>
+          <div className="text-slate-400 mt-1">On-chain DNS registry</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Децентрализованное файловое хранилище. Аналог IPFS, но с экономическими стимулами через TON.">
+      <DataBox label="TON Storage" className="border-emerald-500/30">
+        <div className="text-xs">
+          <div>Decentralized file storage</div>
+          <div>Оплата за хранение в TON</div>
+          <div className="text-slate-400 mt-1">Для NFT media, dApp data</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Анонимный прокси для доступа к TON сети. Защита от цензуры.">
+      <DataBox label="TON Proxy" className="border-purple-500/30">
+        <div className="text-xs">
+          <div>Anonymous network access</div>
+          <div>Censorship resistance</div>
+          <div className="text-slate-400 mt-1">Overlay network (ADNL)</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Веб-сайты, доступные через TON Proxy. Полностью децентрализованный хостинг.">
+      <DataBox label="TON Sites" className="border-orange-500/30">
+        <div className="text-xs">
+          <div>Web3 websites on TON</div>
+          <div>Hosted on TON Storage</div>
+          <div className="text-slate-400 mt-1">Доступны через TON Proxy</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+  </div>
+</DiagramContainer>
+
+## TON DNS: человекочитаемые адреса
+
+### Как работает
+
+TON DNS — это система доменных имён **на блокчейне**:
+
+```
+Традиционный DNS:
+google.com → 142.250.74.206 (централизованные DNS серверы)
+
+TON DNS:
+alice.ton → EQBIhPuWmjT7fP-VomuTWseE8JNWv2q7QYfsVQ1IZwnMk8wL
+(децентрализованный, on-chain)
+```
+
+### Design Use Cases
+
+| Сценарий | Без TON DNS | С TON DNS |
+|----------|------------|-----------|
+| Отправка TON | Скопировать 48-символьный адрес | Отправить на `alice.ton` |
+| DApp URL | `https://app.com?contract=EQB...` | `myapp.ton` |
+| NFT коллекция | Адрес коллекции | `collection.ton` |
+
+### Для System Design
+
+При проектировании dApp с адресной книгой или пользовательскими профилями — интегрируйте TON DNS resolve. Это упрощает UX и снижает ошибки при отправке средств.
+
+## TON Storage: децентрализованные файлы
+
+TON Storage решает проблему: **где хранить большие данные** (images, videos, documents), если on-chain storage слишком дорого?
+
+```
+Стоимость хранения:
+
+On-chain (contract state): ~0.00036 TON/KB/год
+TON Storage:               значительно дешевле (off-chain с incentives)
+IPFS (без incentives):     бесплатно, но нет гарантий доступности
+```
+
+### Design Pattern: On-chain pointer, Off-chain data
+
+```
+NFT Metadata Architecture:
+
+On-chain (NFT contract):
+  - owner: адрес владельца
+  - content_url: "ton://storage/BQC..." или IPFS hash
+
+Off-chain (TON Storage / IPFS):
+  - image.png (1 MB)
+  - metadata.json (description, attributes)
+```
+
+## TON Proxy и ADNL
+
+TON Proxy работает поверх **ADNL** (Abstract Datagram Network Layer) — overlay сеть поверх интернета:
+
+- **Анонимность**: IP адреса скрыты
+- **Шифрование**: все данные зашифрованы
+- **Censorship resistance**: нет единой точки блокировки
+
+### Для System Design
+
+TON Proxy может быть полезен для:
+- dApps в регионах с блокировкой криптовалют
+- Private messaging поверх TON
+- Decentralized API endpoints
+
+## Архитектурный паттерн: Hybrid On-chain / Off-chain
+
+Лучшие TON-приложения используют **гибридную архитектуру**:
+
+<DiagramContainer title="Hybrid Architecture Pattern" className="my-6">
+  <FlowColumn className="p-4 gap-1">
+    <FlowRow className="gap-4 justify-center">
+      <Tooltip content="Critical business logic и ценности — on-chain для trustless verification">
+        <DataBox label="On-chain (TON Blockchain)" className="border-emerald-500/30 w-52">
+          <div className="text-xs space-y-1">
+            <div><Icon name="check" className="text-emerald-400" size="1.2em" /> Token balances</div>
+            <div><Icon name="check" className="text-emerald-400" size="1.2em" /> Ownership records</div>
+            <div><Icon name="check" className="text-emerald-400" size="1.2em" /> DeFi state</div>
+            <div><Icon name="check" className="text-emerald-400" size="1.2em" /> Access control</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+      <Tooltip content="Большие данные и heavy compute — off-chain для экономии">
+        <DataBox label="Off-chain (TON Services + Backend)" className="border-blue-500/30 w-52">
+          <div className="text-xs space-y-1">
+            <div><Icon name="cube" className="text-orange-400" size="1.2em" /> Media → TON Storage</div>
+            <div><Icon name="target" className="text-emerald-400" size="1.2em" /> Domains → TON DNS</div>
+            <div><Icon name="code" className="text-blue-400" size="1.2em" /> API → Backend server</div>
+            <div><Icon name="layers" className="text-blue-400" size="1.2em" /> Analytics → Database</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+<KnowledgeCheck>
+TON Services расширяют возможности системного дизайна за пределы smart contracts. DNS, Storage, Proxy — это ready-made building blocks. В Capstone проекте (M13) мы спроектируем систему, использующую все эти компоненты. Следующий урок: design review и anti-patterns — чего избегать при проектировании на TON.
+</KnowledgeCheck>

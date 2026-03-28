@@ -1,0 +1,146 @@
+{
+  "lessonSlug": "01-sd-fundamentals/_exam",
+  "moduleId": "01-sd-fundamentals",
+  "examTitle": "Экзамен: Основы System Design",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdton-m01-exam"
+  },
+  "questions": [
+    {
+      "id": "sdton-m01-exam-q1",
+      "type": "multiple-choice",
+      "question": "Вы проектируете систему голосования DAO на TON. Участники (~50,000) голосуют за предложения. Требования: 1) каждый голос должен быть верифицируем, 2) результат должен быть доступен сразу после окончания, 3) gas < 0.1 TON за голос. Какой trade-off вы сделаете?",
+      "options": [
+        {
+          "id": "a",
+          "text": "On-chain голосование (каждый голос = транзакция): верифицируемо, но дорого. Подсчёт on-chain при 50K голосов — огромный gas"
+        },
+        {
+          "id": "b",
+          "text": "Off-chain голосование (Snapshot-style): дёшево, но не verifiable on-chain"
+        },
+        {
+          "id": "c",
+          "text": "Гибрид: голоса off-chain с Merkle proof, финальный результат фиксируется on-chain одной транзакцией. Верифицируемо + дёшево"
+        },
+        {
+          "id": "d",
+          "text": "Полностью on-chain с sharded vote-counting контрактами для параллельного подсчёта"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "Гибридный подход оптимален: голоса собираются off-chain (бесплатно для пользователей), формируется Merkle tree голосов, root фиксируется on-chain. Любой может проверить включение своего голоса через Merkle proof. Это удовлетворяет всем требованиям: верифицируемость (Merkle proof), доступность результата (on-chain), дешевизна (одна транзакция для финализации).",
+      "studyHint": "Повторите урок 4: Trade-off Analysis — раздел об on-chain/off-chain split",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m01-exam-q2",
+      "type": "multiple-choice",
+      "question": "Контракт DEX обрабатывает swap Token A → Token B. Между шагом «получить Token A» и «отправить Token B» прошло 2 блока из-за cross-shard messaging. За это время цена Token B изменилась на 5%. Какой pattern помогает решить эту проблему?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Event Sourcing — восстановить цену на момент начала swap"
+        },
+        {
+          "id": "b",
+          "text": "CQRS — кэшировать цену при начале swap и использовать её"
+        },
+        {
+          "id": "c",
+          "text": "Circuit Breaker — остановить DEX до стабилизации цены"
+        },
+        {
+          "id": "d",
+          "text": "Saga с slippage tolerance — если отклонение цены превышает допустимое, выполнить компенсацию (вернуть Token A)"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "Saga Pattern с slippage tolerance: пользователь указывает max допустимое отклонение цены (например, 3%). DEX-контракт проверяет текущую цену при выдаче Token B. Если отклонение > slippage tolerance, Saga выполняет компенсацию — возвращает Token A пользователю через bounce или refund message. Это стандартный подход в TON DEX (STON.fi, DeDust).",
+      "studyHint": "Повторите урок 3: Design Patterns — раздел Saga Pattern и DEX Swap",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m01-exam-q3",
+      "type": "multiple-choice",
+      "question": "Архитектор предлагает хранить полный orderbook (все открытые ордера) в одном контракте на TON. Какие два критических проблемы это создаёт?",
+      "options": [
+        {
+          "id": "a",
+          "text": "1) Storage fee за тысячи ордеров быстро съест баланс контракта. 2) Один контракт = один шард — все ордера обрабатываются последовательно, bottleneck"
+        },
+        {
+          "id": "b",
+          "text": "Проблем нет — TON справляется с любым объёмом данных в одном контракте"
+        },
+        {
+          "id": "c",
+          "text": "1) TVM не поддерживает массивы. 2) Gas limit не позволяет обработать больше 10 ордеров"
+        },
+        {
+          "id": "d",
+          "text": "1) Контракт станет слишком большим для деплоя. 2) Get-methods не смогут вернуть все ордера"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Два критических проблемы: 1) Storage fee — каждый ордер занимает cells, контракт платит storage fee за каждый бит хранимых данных. При тысячах ордеров это значительная сумма. 2) Single shard bottleneck — все транзакции с одним контрактом обрабатываются в одном шарде последовательно, что ограничивает throughput и лишает преимуществ шардирования TON.",
+      "studyHint": "Повторите урок 4: Trade-off Analysis — пример AMM vs Orderbook и урок 2: масштабирование",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m01-exam-q4",
+      "type": "multiple-choice",
+      "question": "Разработчик отправил internal message контракту B с флагом bounce: false. ContractB бросил исключение. Что произойдёт?",
+      "options": [
+        {
+          "id": "a",
+          "text": "TON автоматически повторит доставку сообщения"
+        },
+        {
+          "id": "b",
+          "text": "Gas и TON, приложенные к сообщению, будут потеряны — bounce отключён, ContractA не узнает об ошибке"
+        },
+        {
+          "id": "c",
+          "text": "TON сгенерирует bounce message для ContractA"
+        },
+        {
+          "id": "d",
+          "text": "Транзакция откатится полностью, включая действия ContractA"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "При bounce: false, если ContractB не смог обработать сообщение, bounce message НЕ генерируется. TON и gas, приложенные к сообщению, теряются. ContractA не получит уведомления об ошибке. Это делает bounce: false опасным — его следует использовать только когда вы уверены, что получатель обработает сообщение, или потеря средств допустима.",
+      "studyHint": "Повторите урок 3: Design Patterns — раздел Circuit Breaker и bounce messages",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m01-exam-q5",
+      "type": "multiple-choice",
+      "question": "По 6-Step Framework, вы проектируете NFT маркетплейс на TON. На шаге 2 (On-chain/Off-chain Split) что из перечисленного должно быть OFF-chain?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Владение NFT (кто владеет каким токеном)"
+        },
+        {
+          "id": "b",
+          "text": "Цена листинга и логика аукциона"
+        },
+        {
+          "id": "c",
+          "text": "Изображения NFT, история просмотров, рейтинги продавцов"
+        },
+        {
+          "id": "d",
+          "text": "Распределение royalties при перепродаже"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "Off-chain: изображения (слишком большие, хранятся на IPFS/TON Storage), история просмотров (не требует trustless verification), рейтинги (субъективные). On-chain: владение NFT (trustless), цена/аукцион (trustless торговля), royalties (автоматическое исполнение при каждой перепродаже). Принцип: on-chain = minimum viable state для trustless операций.",
+      "studyHint": "Повторите урок 5: SD Framework — шаг 2 On-chain/Off-chain Split",
+      "bloomLevel": "applied"
+    }
+  ]
+}

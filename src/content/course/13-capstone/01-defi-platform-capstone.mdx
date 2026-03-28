@@ -1,0 +1,219 @@
+---
+title: "Capstone: Проектирование DeFi платформы на TON"
+description: "End-to-end system design: DEX + Lending + Staking на TON — полная архитектура"
+order: 1
+difficulty: "advanced"
+estimatedTime: 30
+topics: ["Capstone", "DeFi Platform", "Architecture", "Integration", "End-to-End"]
+---
+
+# Capstone: DeFi Platform на TON
+
+## Задание
+
+Спроектируйте **полноценную DeFi платформу** на TON, включающую:
+1. **DEX** — AMM pools для обмена токенов
+2. **Lending** — deposit collateral, borrow assets
+3. **Liquid Staking** — стейкинг TON с получением liquid token
+
+## Требования
+
+```
+Functional Requirements:
+  - DEX: swap any Jetton pair, add/remove liquidity, multi-hop routing
+  - Lending: deposit collateral, borrow, repay, liquidate
+  - Staking: stake TON → receive lstTON, unstake lstTON → TON
+
+Non-functional Requirements:
+  - Users: 100K+ active traders/stakers
+  - TVL: target $10M+
+  - Latency: swap confirmation < 30 sec
+  - Gas: swap < 0.1 TON, lending ops < 0.15 TON
+  - Security: formal verification for core contracts, audit by top firm
+  - Uptime: 99.9% (smart contracts are always available, backend ≥ 99.9%)
+```
+
+## Step 1: High-Level Architecture
+
+<DiagramContainer title="DeFi Platform: High-Level Architecture" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowRow className="gap-4 justify-center">
+      <Tooltip content="Frontend: React dApp + Telegram Mini App">
+        <DataBox label="Frontend" className="border-blue-500/30 w-44">
+          <div className="text-xs">Web dApp + TMA</div>
+        </DataBox>
+      </Tooltip>
+      <Tooltip content="SDK: TypeScript library for contract interaction">
+        <DataBox label="SDK" className="border-blue-500/30 w-44">
+          <div className="text-xs">@defi-platform/sdk</div>
+        </DataBox>
+      </Tooltip>
+    </FlowRow>
+    <Arrow direction="down" />
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <Tooltip content="DEX: Router + Pools + LP Wallets">
+        <DataBox label="DEX Module" className="border-emerald-500/30 w-36">
+          <div className="text-xs space-y-1">
+            <div>Router</div>
+            <div>Pool[] (per pair)</div>
+            <div>LP Wallet[]</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+      <Tooltip content="Lending: Market + Pools + User Positions">
+        <DataBox label="Lending Module" className="border-purple-500/30 w-36">
+          <div className="text-xs space-y-1">
+            <div>Market Controller</div>
+            <div>Supply Pool[]</div>
+            <div>User Position[]</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+      <Tooltip content="Staking: Pool + lstTON Jetton + Validator integration">
+        <DataBox label="Staking Module" className="border-orange-500/30 w-36">
+          <div className="text-xs space-y-1">
+            <div>Staking Pool</div>
+            <div>lstTON Jetton</div>
+            <div>Validator Controller</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+    </FlowRow>
+    <Arrow direction="down" />
+    <FlowRow className="gap-3 justify-center">
+      <Tooltip content="Shared infrastructure: Oracle, Governance, Treasury">
+        <DataBox label="Shared Infrastructure" className="border-yellow-500/30 w-64">
+          <div className="text-xs">Oracle (TWAP) · Governance (DAO) · Treasury · Indexer</div>
+        </DataBox>
+      </Tooltip>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+## Step 2: Contract Architecture (per module)
+
+### DEX Contracts
+
+```
+DEX Architecture:
+├── Router (1 contract)
+│   ├── create_pool(token_a, token_b, fee_tier)
+│   ├── swap(path[], min_out, deadline)
+│   └── pool_registry: HashmapE<pair_hash, pool_address>
+├── Pool (1 per pair, N contracts)
+│   ├── reserve_0, reserve_1, total_lp, fee
+│   ├── swap_handler, add_liquidity, remove_liquidity
+│   └── Jetton Wallets for token_0 and token_1
+└── LP Wallet (1 per provider per pool, M contracts)
+    └── lp_balance, owner
+```
+
+### Lending Contracts
+
+```
+Lending Architecture:
+├── Market Controller (1 contract)
+│   ├── supported_assets[], interest_params, liquidation_config
+│   ├── oracle_address, governance_address
+│   └── position_code (bytecode for user positions)
+├── Supply Pool (1 per asset, K contracts)
+│   ├── total_supplied, total_borrowed, interest_rate
+│   ├── utilization = borrowed / supplied
+│   └── Jetton Wallet for the asset
+└── User Position (1 per user, L contracts)
+    ├── collateral_amounts[], borrow_amounts[], health_factor
+    ├── accrued_interest, last_update
+    └── Liquidation threshold check
+```
+
+### Staking Contracts
+
+```
+Staking Architecture:
+├── Staking Pool (1 contract)
+│   ├── total_staked, exchange_rate
+│   ├── validator_controllers[], pending_unstakes[]
+│   └── stake(), unstake(), compound_rewards()
+├── lstTON Jetton Master (1 contract)
+│   ├── total_supply, pool_address
+│   └── Standard Jetton operations
+└── lstTON Wallet (1 per staker, N contracts)
+    └── balance, owner
+```
+
+## Step 3: Integration Points
+
+```
+Cross-module Integration:
+
+DEX ↔ Lending:
+  - Lending oracle uses DEX TWAP price
+  - Liquidation bots swap collateral on DEX
+  - lstTON can be used as collateral in Lending
+
+DEX ↔ Staking:
+  - lstTON/TON pool on DEX
+  - Instant unstake via DEX swap (vs slow validator unstake)
+
+Lending ↔ Staking:
+  - lstTON as collateral (interest-bearing)
+  - Auto-compound: lending interest → stake → more lstTON
+```
+
+## Step 4: Gas Budget
+
+```
+Operation Gas Estimates:
+  DEX Swap (single hop):     ~0.05 TON
+  DEX Swap (2-hop):          ~0.08 TON
+  Add Liquidity:             ~0.07 TON
+  Lending Deposit:           ~0.06 TON
+  Lending Borrow:            ~0.08 TON
+  Liquidation:               ~0.10 TON
+  Stake TON:                 ~0.05 TON
+  Unstake lstTON:            ~0.06 TON
+  
+  All ops return excess gas to user.
+```
+
+## Step 5: Security Plan
+
+```
+Security Layers:
+1. Code audit by CertiK/Trail of Bits (before mainnet)
+2. Bug bounty program ($50K-$500K per severity)
+3. Timelock on contract upgrades (48h for normal, 4h for emergency)
+4. Multi-sig admin (3-of-5)
+5. Oracle staleness checks (reject price > 5 min old)
+6. Liquidation monitoring (24/7 bot with PagerDuty)
+7. Emergency pause function (admin can pause all modules)
+```
+
+## Step 6: Monitoring
+
+```
+Key Dashboards:
+1. TVL per module (real-time)
+2. Swap volume (hourly/daily)
+3. Lending utilization rates
+4. Health factor distribution
+5. Contract balances (low balance alerts)
+6. Gas usage trends
+7. Error rates (bounce %)
+```
+
+## Your Assignment
+
+Используя 6-Step Framework из M01:
+1. Выберите **один** из трёх модулей (DEX, Lending, или Staking)
+2. Спроектируйте **полную архитектуру** с TL-B schemas
+3. Нарисуйте **все message flows** для ключевых операций
+4. Рассчитайте **gas budget** для каждой операции
+5. Определите **security checklist** и attack vectors
+6. Спланируйте **monitoring и alerting**
+
+Документируйте как ADR (Architecture Decision Records).
+
+<KnowledgeCheck>
+Capstone объединяет все модули курса: от SD fundamentals (M01) через TON architecture (M02-M03), contract sharding (M04-M05), gas optimization (M06), DeFi patterns (M07), token design (M08), и production ops (M12). Каждый модуль — building block для production DeFi platform.
+</KnowledgeCheck>

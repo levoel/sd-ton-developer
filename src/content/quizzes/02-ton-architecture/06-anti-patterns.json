@@ -1,0 +1,69 @@
+{
+  "lessonSlug": "02-ton-architecture/06-anti-patterns",
+  "moduleId": "02-ton-architecture",
+  "_meta": {
+    "idPrefix": "sdton-m02-06"
+  },
+  "questions": [
+    {
+      "id": "sdton-m02-06-q1",
+      "type": "multiple-choice",
+      "question": "Контракт хранит историю всех swap-ов (unbounded list). Через год у контракта закончился баланс. Что произошло?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Контракт был взломан"
+        },
+        {
+          "id": "b",
+          "text": "Слишком много gas потрачено на transactions"
+        },
+        {
+          "id": "c",
+          "text": "TON Foundation удалила контракт"
+        },
+        {
+          "id": "d",
+          "text": "Storage fee за растущий state съела весь баланс контракта. Контракт заморожен — unbounded storage anti-pattern"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "TON взимает storage fee пропорционально размеру state. Unbounded list растёт с каждым swap → storage fee растёт → баланс падает → контракт freeze. Решение: хранить только агрегаты (total_volume, total_swaps), детальную историю — в off-chain indexer.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m02-06-q2",
+      "type": "multiple-choice",
+      "question": "Разработчик отправил 0.5 TON в message другому контракту с bounce: false. Контракт-получатель не существует. Что произойдёт с 0.5 TON?",
+      "options": [
+        {
+          "id": "a",
+          "text": "0.5 TON будет потерян навсегда — bounce отключён, контракт не существует, некому обработать сообщение и некому вернуть средства"
+        },
+        {
+          "id": "b",
+          "text": "TON будет автоматически возвращён отправителю"
+        },
+        {
+          "id": "c",
+          "text": "TON будет ждать, пока контракт будет задеплоен"
+        },
+        {
+          "id": "d",
+          "text": "Транзакция не будет выполнена"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "С bounce: false нет механизма возврата при ошибке. Если контракт-получатель не существует или бросил исключение — средства потеряны. Всегда используйте bounce: true и реализуйте bounce handler в контракте-отправителе для обработки ошибок.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m02-06-q3",
+      "type": "true-false",
+      "question": "Монолитный контракт с 1 миллионом пользователей на TON будет обрабатывать все транзакции параллельно благодаря dynamic sharding.",
+      "correctAnswer": false,
+      "explanation": "Нет. Шардирование работает на уровне аккаунтов (контрактов), а не внутри контракта. Один контракт = один аккаунт = один шард = последовательная обработка. Для параллельности нужен sharded pattern: один master + N wallet/user контрактов. Каждый user-контракт может обрабатываться в своём шарде.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

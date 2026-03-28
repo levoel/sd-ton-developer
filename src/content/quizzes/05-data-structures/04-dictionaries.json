@@ -1,0 +1,61 @@
+{
+  "lessonSlug": "05-data-structures/04-dictionaries",
+  "moduleId": "05-data-structures",
+  "_meta": {
+    "idPrefix": "sdton-m05-04"
+  },
+  "questions": [
+    {
+      "id": "sdton-m05-04-q1",
+      "type": "multiple-choice",
+      "question": "Dictionary (HashmapE) с 100,000 entries в одном контракте. Какие две главные проблемы?",
+      "options": [
+        {
+          "id": "a",
+          "text": "HashmapE не поддерживает больше 1000 entries"
+        },
+        {
+          "id": "b",
+          "text": "1) Gas per operation растёт с размером dict (глубина Patricia trie). 2) Storage fee за все cells dict — постоянный расход. Solution: sharded child contracts"
+        },
+        {
+          "id": "c",
+          "text": "HashmapE работает только с integer keys"
+        },
+        {
+          "id": "d",
+          "text": "Проблем нет — TON оптимизирован для больших dict"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "HashmapE = Patricia Trie: gas пропорционально key_length × depth. 100K entries = ~17 levels depth. Gas: get ~30K units, set ~50K units. Storage: 100K entries × ~10 cells = 1M cells → ~4 TON/year storage fee. Sharded child contracts: constant gas per operation, distributed storage fee.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m05-04-q2",
+      "type": "multiple-choice",
+      "question": "Контракт хранит 3 admin-адреса. Как лучше хранить?",
+      "options": [
+        {
+          "id": "a",
+          "text": "HashmapE<uint8, MsgAddress> — dictionary с 3 entries"
+        },
+        {
+          "id": "b",
+          "text": "3 отдельных child contracts (по одному на admin)"
+        },
+        {
+          "id": "c",
+          "text": "Inline: admin_1, admin_2, admin_3 как отдельные поля в root cell (3 × 267 = 801 bits, помещается в 1 cell без overhead dict structure)"
+        },
+        {
+          "id": "d",
+          "text": "Off-chain JSON файл с адресами"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "Для ≤4 entries — inline хранение оптимально: 3 × 267 = 801 bits < 1023, помещается в одну cell. Dict добавляет structural overhead (tree nodes). Child contracts — overkill для 3 entries. Rule: ≤4 = inline, 5-1000 = dict, >1000 = child contracts.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

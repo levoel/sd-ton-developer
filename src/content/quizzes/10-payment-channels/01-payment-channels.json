@@ -1,0 +1,35 @@
+{
+  "lessonSlug": "10-payment-channels/01-payment-channels",
+  "moduleId": "10-payment-channels",
+  "_meta": {
+    "idPrefix": "sdton-m10-01"
+  },
+  "questions": [
+    {
+      "id": "sdton-m10-01-q1",
+      "type": "multiple-choice",
+      "question": "Payment channel между Alice и Bob: 1000 off-chain транзакций за день. Сколько on-chain транзакций потребуется?",
+      "options": [
+        {
+          "id": "a",
+          "text": "1000 — каждая off-chain tx = on-chain tx"
+        },
+        {
+          "id": "b",
+          "text": "0 — всё off-chain"
+        },
+        {
+          "id": "c",
+          "text": "500 — batch по 2"
+        },
+        {
+          "id": "d",
+          "text": "2 — open channel (1 tx) + close channel (1 tx). Все 1000 updates — off-chain, бесплатно, мгновенно"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "Payment channel: open (1 on-chain tx) → unlimited off-chain updates (signed states, free) → close (1 on-chain tx). Total: 2 tx для unlimited payments. Это ключевое преимущество: amortize on-chain cost over thousands of micropayments.",
+      "bloomLevel": "conceptual"
+    }
+  ]
+}

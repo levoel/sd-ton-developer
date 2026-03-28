@@ -1,0 +1,119 @@
+{
+  "lessonSlug": "09-mini-apps/_exam",
+  "moduleId": "09-mini-apps",
+  "examTitle": "Экзамен: Telegram Mini Apps — архитектура",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdton-m09-exam"
+  },
+  "questions": [
+    {
+      "id": "sdton-m09-exam-q1",
+      "type": "multiple-choice",
+      "question": "Вы проектируете Mini App game с ожидаемыми 5M DAU. Какой scaling stack оптимален?",
+      "options": [
+        {
+          "id": "a",
+          "text": "CDN (static assets) + Load Balancer + Stateless API servers + Redis (cache/leaderboard) + PostgreSQL (persistent) + Queue (async TON operations)"
+        },
+        {
+          "id": "b",
+          "text": "Single server + SQLite — для прототипа достаточно"
+        },
+        {
+          "id": "c",
+          "text": "Всё on-chain — TON обработает 5M DAU"
+        },
+        {
+          "id": "d",
+          "text": "Telegram Cloud Storage для всех данных"
+        }
+      ],
+      "correctAnswer": "a",
+      "studyHint": "Повторите урок 1: Mini Apps Architecture — Scaling section",
+      "explanation": "5M DAU = ~50K concurrent. Stack: CDN для static (снижает load), LB + stateless APIs (horizontal scaling), Redis для hot data (leaderboard = sorted set, sessions), PostgreSQL для persistence, Queue для async TON tx (minting, rewards). On-chain (c) при 5M DAU = millions of tx = millions of TON in gas.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m09-exam-q2",
+      "type": "multiple-choice",
+      "question": "Mini App принимает TON payments. User отправляет 10 TON в payment contract. Как backend должен verify payment?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Trust frontend callback — если frontend сказал 'paid', значит paid"
+        },
+        {
+          "id": "b",
+          "text": "Verify on-chain: backend indexer detects incoming tx → check amount, destination, memo match invoice → credit user. Never trust frontend"
+        },
+        {
+          "id": "c",
+          "text": "Проверить баланс contract через get-method"
+        },
+        {
+          "id": "d",
+          "text": "Payment verification не нужна — TON гарантирует доставку"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите урок 1: Mini Apps Architecture — Payment Flow Design",
+      "explanation": "Never trust client-side payment confirmation. Backend must verify on-chain: 1) Transaction exists, 2) Amount matches invoice, 3) Destination matches payment contract, 4) Memo/comment matches invoice ID. Backend indexer (tonapi, toncenter) monitors incoming transactions and credits user upon verified match.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m09-exam-q3",
+      "type": "multiple-choice",
+      "question": "Для Sybil protection в Mini App game (предотвращение multi-accounting), какой набор мер наиболее эффективен?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Только CAPTCHA"
+        },
+        {
+          "id": "b",
+          "text": "IP-based blocking"
+        },
+        {
+          "id": "c",
+          "text": "Telegram account age check + phone number uniqueness (via Telegram) + rate limiting + on-chain activity requirement для reward claim"
+        },
+        {
+          "id": "d",
+          "text": "Sybil protection невозможна в crypto"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите урок 1: Mini Apps Architecture — Anti-abuse Patterns",
+      "explanation": "Layered Sybil resistance: 1) Telegram account age — new accounts suspicious, 2) Phone uniqueness — Telegram ties account to phone, 3) Rate limiting — limit actions per user, 4) On-chain requirement — need TON wallet with activity for reward claim (cost barrier). IP blocking (c) ineffective (VPN), CAPTCHA alone (a) easily bypassed at scale.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m09-exam-q4",
+      "type": "multiple-choice",
+      "question": "Mini App использует Telegram.WebApp.initData для аутентификации. Backend получает initData от клиента. Какой validation flow корректен?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Доверять initData без проверки — Telegram гарантирует подлинность"
+        },
+        {
+          "id": "b",
+          "text": "Проверить формат JSON и наличие user.id"
+        },
+        {
+          "id": "c",
+          "text": "Проверить initData только при первом запросе, далее кэшировать"
+        },
+        {
+          "id": "d",
+          "text": "HMAC-SHA256: 1) Parse data_check_string из initData. 2) Compute HMAC(data_check_string, secret=HMAC(bot_token, 'WebAppData')). 3) Compare hash. 4) Проверить auth_date не старше 5 минут. Reject при mismatch"
+        }
+      ],
+      "correctAnswer": "d",
+      "studyHint": "Повторите урок 1: Mini Apps Architecture — Authentication и initData Validation",
+      "explanation": "initData может быть подделана клиентом — НЕЛЬЗЯ доверять без проверки. HMAC-SHA256: backend вычисляет hash с использованием bot_token как secret. Если hash совпадает — данные подлинные от Telegram. auth_date check предотвращает replay attacks. Каждый запрос должен проверяться — не только первый.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

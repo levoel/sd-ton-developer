@@ -1,0 +1,69 @@
+{
+  "lessonSlug": "01-sd-fundamentals/04-tradeoff-analysis",
+  "moduleId": "01-sd-fundamentals",
+  "_meta": {
+    "idPrefix": "sdton-m01-04"
+  },
+  "questions": [
+    {
+      "id": "sdton-m01-04-q1",
+      "type": "multiple-choice",
+      "question": "Почему большинство DEX на TON (STON.fi, DeDust) выбрали AMM, а не orderbook?",
+      "options": [
+        {
+          "id": "a",
+          "text": "AMM более безопасен, чем orderbook"
+        },
+        {
+          "id": "b",
+          "text": "TON не поддерживает достаточное количество операций для orderbook"
+        },
+        {
+          "id": "c",
+          "text": "Хранение orderbook дорого (storage fee), матчинг ордеров в async среде сложен, AMM — одна транзакция вместо создания+матчинга ордеров"
+        },
+        {
+          "id": "d",
+          "text": "Orderbook запрещён правилами TON Foundation"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "AMM выигрывает на TON по трём причинам: 1) Storage fee делает хранение каждого ордера дорогим, 2) Матчинг ордеров в асинхронной среде (cross-shard) сложно сделать fair, 3) AMM swap — одна транзакция с предсказуемым gas, vs orderbook — создание ордера + ожидание матчинга. Trade-off: AMM менее точен в ценообразовании, но практичнее для TON.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m01-04-q2",
+      "type": "multiple-choice",
+      "question": "Что такое ADR (Architecture Decision Record) и зачем он нужен?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Автоматически генерируемый отчёт об использовании gas"
+        },
+        {
+          "id": "b",
+          "text": "Стандарт аудита безопасности блокчейна"
+        },
+        {
+          "id": "c",
+          "text": "Тип смарт-контракта для управления доступом"
+        },
+        {
+          "id": "d",
+          "text": "Документ, фиксирующий архитектурное решение: контекст, выбор, альтернативы и последствия — чтобы будущие разработчики понимали, ПОЧЕМУ было принято это решение"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "ADR документирует: Status (accepted/deprecated), Context (в каких условиях), Decision (что выбрали), Consequences (плюсы и минусы). Критически важен для команд: без ADR новые разработчики не понимают контекст решений и могут невольно их нарушить.",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "sdton-m01-04-q3",
+      "type": "true-false",
+      "question": "При проектировании системы на TON следует всегда выбирать sharded pattern (несколько контрактов), потому что это обеспечивает лучшую масштабируемость.",
+      "correctAnswer": false,
+      "explanation": "Sharded pattern добавляет overhead: каждое сообщение между контрактами стоит gas, cross-shard messages медленнее, код сложнее. Для системы с малым числом пользователей (<1000) монолитный контракт может быть лучшим выбором. Правильный подход — анализ trade-offs для конкретных требований, а не One-Size-Fits-All.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

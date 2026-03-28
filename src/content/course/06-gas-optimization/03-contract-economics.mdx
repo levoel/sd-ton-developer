@@ -1,0 +1,125 @@
+---
+title: "Экономика контрактов и sustainability"
+description: "Как проектировать контракты с устойчивой экономической моделью: fee structure, treasury, protocol revenue"
+order: 3
+difficulty: "advanced"
+estimatedTime: 18
+topics: ["Contract Economics", "Fee Structure", "Treasury", "Sustainability"]
+---
+
+# Экономика контрактов
+
+## Проблема: контракт должен «выживать»
+
+Контракт на TON — это **экономическая единица**: он имеет баланс, платит storage fee, и может быть заморожен при нулевом балансе. System Design должен учитывать **sustainability** — способность контракта существовать долгосрочно.
+
+## Revenue Sources для контрактов
+
+<DiagramContainer title="Revenue Sources для TON контрактов" className="my-6">
+  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4">
+    <Tooltip content="Комиссия с каждой операции: swap fee, listing fee, mint fee">
+      <DataBox label="Protocol Fee" className="border-emerald-500/30">
+        <div className="text-xs">0.1-1% per operation</div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Gas remainder: пользователь отправляет с запасом, контракт оставляет часть">
+      <DataBox label="Gas Remainder" className="border-blue-500/30">
+        <div className="text-xs">~0.005 TON per tx</div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Deposit interest: staking контракты зарабатывают на validator rewards">
+      <DataBox label="Yield" className="border-purple-500/30">
+        <div className="text-xs">4-5% APY on staked TON</div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Admin top-up: admin периодически пополняет баланс для покрытия storage">
+      <DataBox label="Admin Top-up" className="border-orange-500/30">
+        <div className="text-xs">Manual replenishment</div>
+      </DataBox>
+    </Tooltip>
+  </div>
+</DiagramContainer>
+
+## Sustainability Formula
+
+```
+Sustainability check:
+
+Monthly revenue = tx_count × fee_per_tx
+Monthly cost = storage_fee_per_month + operational_costs
+
+Sustainable if: revenue > cost
+
+Пример: DEX Pool
+  Revenue: 10,000 swaps/month × 0.3% fee × avg $100 = $3,000/month
+  Cost: storage (~0.01 TON/month) + admin (minimal)
+  → Highly sustainable [OK]
+
+Пример: NFT Collection (10K items, no trading)
+  Revenue: 0 (no ongoing activity)
+  Cost: 10,000 items × 0.00003 TON/month = 0.3 TON/month
+  → Not sustainable without admin top-up [WARN]
+```
+
+## Fee Design Patterns
+
+### Pattern 1: Percentage fee
+
+```
+DEX swap fee:
+  input_amount = msg.value;
+  fee = input_amount * FEE_BPS / 10000;  // 30 bps = 0.3%
+  treasury_balance += fee;
+  swap_amount = input_amount - fee;
+```
+
+### Pattern 2: Flat fee
+
+```
+NFT listing fee:
+  require(msg.value >= LISTING_FEE);  // 0.1 TON flat
+  treasury_balance += LISTING_FEE;
+  // Process listing...
+```
+
+### Pattern 3: Tiered fees
+
+```
+Volume-based fee:
+  if (monthly_volume < 100_000 TON) fee_bps = 30;      // 0.3%
+  else if (monthly_volume < 1_000_000 TON) fee_bps = 20; // 0.2%
+  else fee_bps = 10;                                      // 0.1%
+```
+
+## Treasury Management
+
+### Treasury контракт
+
+Отдельный контракт для накопления и распределения protocol fees:
+
+```
+Treasury Design:
+  collect_fee(amount) — вызывается pool контрактами
+  withdraw(amount, to) — только admin
+  distribute_rewards(validators[]) — распределение
+  
+Guards:
+  - Minimum balance (never withdraw below threshold)
+  - Timelock on large withdrawals
+  - Multi-sig for admin operations
+```
+
+## Design Checklist для Economics
+
+| Проверка | Вопрос |
+|----------|--------|
+| **Revenue** | Откуда контракт получает доход? |
+| **Costs** | Какие постоянные расходы (storage)? |
+| **Sustainability** | Revenue > costs при текущих объёмах? |
+| **Growth** | Как costs растут с ростом пользователей? |
+| **Worst case** | Что если активность упадёт до нуля? Freeze? |
+| **Recovery** | Как восстановить frozen контракт? |
+
+<KnowledgeCheck>
+Экономика контрактов — не afterthought, а часть System Design. Revenue sources, sustainability formula, fee design — планируйте до deployment. Frozen контракт = потенциальная потеря средств пользователей. В следующем модуле: DeFi System Design — где economic design критичнее всего.
+</KnowledgeCheck>

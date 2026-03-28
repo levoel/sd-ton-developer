@@ -1,0 +1,35 @@
+{
+  "lessonSlug": "07-defi-design/03-oracle-design",
+  "moduleId": "07-defi-design",
+  "_meta": {
+    "idPrefix": "sdton-m07-03"
+  },
+  "questions": [
+    {
+      "id": "sdton-m07-03-q1",
+      "type": "multiple-choice",
+      "question": "Lending protocol использует DEX TWAP oracle. Почему TWAP на TON безопаснее, чем на Ethereum?",
+      "options": [
+        {
+          "id": "a",
+          "text": "TON имеет более точные ценовые данные"
+        },
+        {
+          "id": "b",
+          "text": "TWAP на TON обновляется чаще"
+        },
+        {
+          "id": "c",
+          "text": "На TON нет flash loans → невозможно мгновенно манипулировать DEX ценой для distortion TWAP. На Ethereum flash loan → dump price → trigger liquidation → profit — классическая атака"
+        },
+        {
+          "id": "d",
+          "text": "TON оракулы используют больше источников"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "TWAP = Time-Weighted Average Price. На Ethereum: flash loan → dump token → TWAP кратковременно искажается → trigger unfair liquidation → profit. На TON: flash loans невозможны → для манипуляции TWAP нужно реально держать позицию (дорого, рискованно). TWAP на TON = значительно более надёжный ценовой source.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

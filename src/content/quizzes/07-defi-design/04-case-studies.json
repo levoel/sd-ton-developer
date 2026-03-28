@@ -1,0 +1,43 @@
+{
+  "lessonSlug": "07-defi-design/04-case-studies",
+  "moduleId": "07-defi-design",
+  "_meta": {
+    "idPrefix": "sdton-m07-04"
+  },
+  "questions": [
+    {
+      "id": "sdton-m07-04-q1",
+      "type": "multiple-choice",
+      "question": "STON.fi использует 'direct pool' pattern (pool хранит свои Jetton Wallets), DeDust — 'vault' pattern (один vault на токен). Какой trade-off ключевой?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Нет различий — оба одинаковы"
+        },
+        {
+          "id": "b",
+          "text": "Direct всегда лучше"
+        },
+        {
+          "id": "c",
+          "text": "Vault всегда лучше"
+        },
+        {
+          "id": "d",
+          "text": "Direct: проще (меньше contracts/messages), но дупликация wallets. Vault: эффективнее (один wallet per token), но сложнее (больше message hops) и vault = single point of failure per token"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "Direct (STON.fi): каждый pool имеет свой Jetton Wallet → простые message flows, но N pools × M tokens = N×M wallets. Vault (DeDust): один vault per token → меньше wallets, gas savings, но сложнее flows и vault compromise = все pools affected. Trade-off: simplicity vs efficiency.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m07-04-q2",
+      "type": "true-false",
+      "question": "Optimal multi-hop swap routing (выбор лучшего пути через несколько pools) должен выполняться on-chain для trustless execution.",
+      "correctAnswer": false,
+      "explanation": "Routing расчёт on-chain = огромный compute gas (перебор всех возможных путей). Best practice: off-chain routing (SDK/API рассчитывает optimal path), on-chain execution (контракт выполняет конкретный path). User получает подписанный route от SDK и отправляет на исполнение.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

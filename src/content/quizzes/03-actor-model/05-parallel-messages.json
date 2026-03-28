@@ -1,0 +1,61 @@
+{
+  "lessonSlug": "03-actor-model/05-parallel-messages",
+  "moduleId": "03-actor-model",
+  "_meta": {
+    "idPrefix": "sdton-m03-05"
+  },
+  "questions": [
+    {
+      "id": "sdton-m03-05-q1",
+      "type": "multiple-choice",
+      "question": "Контракт Master хочет отправить airdrop на 2000 кошельков. TVM ограничивает ~255 outbound messages на транзакцию. Как спроектировать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Chain of batch sends: отправить 255 messages + self-message 'continue from 256'. Каждая следующая транзакция отправляет ещё 255 до завершения"
+        },
+        {
+          "id": "b",
+          "text": "Отправить все 2000 в одной транзакции — TVM справится"
+        },
+        {
+          "id": "c",
+          "text": "Создать 2000 отдельных транзакций вручную"
+        },
+        {
+          "id": "d",
+          "text": "Airdrop невозможен на TON"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Chain of batch sends: каждая транзакция отправляет до ~255 сообщений + одно self-message с параметром 'continue from index 256'. Master обрабатывает self-message и отправляет следующие 255. Для 2000 кошельков = ceil(2000/255) ≈ 8 транзакций. Gas: 2000 × (compute + fwd) + 8 × self-msg overhead.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m03-05-q2",
+      "type": "multiple-choice",
+      "question": "Oracle Aggregator использует scatter-gather: отправляет запрос 5 oracle-ам, ждёт ответы. Oracle #3 offline и не ответит. Как спроектировать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Ждать все 5 ответов бесконечно"
+        },
+        {
+          "id": "b",
+          "text": "Quorum + timeout: финализировать при получении 3 из 5 ответов (quorum) ИЛИ по timeout — взять что есть. Отбросить outliers"
+        },
+        {
+          "id": "c",
+          "text": "Отменить весь раунд если хотя бы один oracle не ответил"
+        },
+        {
+          "id": "d",
+          "text": "Использовать только 1 oracle для простоты"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Quorum + timeout: не ждать все ответы — достаточно 3 из 5 (>50%). Timeout для graceful degradation: если quorum не набран за deadline — использовать partial results или abort. Outlier rejection: отбросить ответы, отличающиеся > X% от медианы (защита от malicious oracle).",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

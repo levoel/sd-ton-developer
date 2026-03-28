@@ -1,0 +1,232 @@
+---
+title: "Техники оптимизации gas"
+description: "Практические техники снижения gas costs: code optimization, message batching, lazy evaluation"
+order: 2
+difficulty: "advanced"
+estimatedTime: 18
+topics: ["Gas Optimization", "Code Optimization", "Batching", "Lazy Evaluation"]
+---
+
+# Техники оптимизации gas
+
+## Техника 1: Уменьшить compute
+
+### Avoid redundant cell loads
+
+```
+[NO] Multiple loads:
+let owner = load_data().owner;     // load state cell
+let balance = load_data().balance; // load state cell AGAIN
+
+[OK] Single load:
+let data = load_data();            // load once
+let owner = data.owner;
+let balance = data.balance;
+```
+
+### Pre-compute constants
+
+```
+[NO] Compute in handler:
+recv_internal(msg) {
+  let expected = calc_address(code, data);  // expensive every time
+}
+
+[OK] Store pre-computed:
+// At deploy time:
+self.expected_child_address = calc_address(code, data);
+
+recv_internal(msg) {
+  require(sender == self.expected_child_address);  // cheap comparison
+}
+```
+
+### Minimize dictionary operations
+
+```
+[NO] Multiple dict lookups:
+let a = dict.get(key_1);  // Patricia trie traversal
+let b = dict.get(key_2);  // Another traversal
+dict.set(key_1, new_a);   // Traversal + restructure
+dict.set(key_2, new_b);   // Another traversal + restructure
+
+[OK] Batch operations:
+// If possible, redesign to avoid dict entirely
+// Or batch: load subtree, modify, save once
+```
+
+## Техника 2: Уменьшить forward fees
+
+### Minimize message size
+
+```
+[NO] Large message body:
+send(target, gas, beginCell()
+  .storeUint(op, 32)
+  .storeUint(query_id, 64)
+  .storeAddress(sender)       // 267 bits — нужно ли?
+  .storeAddress(recipient)    // 267 bits
+  .storeUint(timestamp, 64)   // — нужно ли? recipient может взять now()
+  .storeRef(metadata_cell)    // — нужно ли? можно вычислить
+  .endCell()
+);
+
+[OK] Minimal message body:
+send(target, gas, beginCell()
+  .storeUint(op, 32)
+  .storeUint(query_id, 64)
+  .storeCoins(amount)         // только необходимое
+  .endCell()
+);
+// recipient знает sender из msg.sender
+// timestamp = now() в compute phase
+// metadata = вычислимо из known params
+```
+
+### Use mode flags для gas savings
+
+```
+Message send modes:
+  MODE_PAY_FEES_SEPARATELY (1):  fees из value контракта, не из message value
+  MODE_CARRY_ALL_REMAINING (128): отправить весь оставшийся баланс
+  MODE_DESTROY_IF_ZERO (32):     уничтожить контракт если баланс = 0
+
+// Для excess return:
+send(sender, 0, "excess", MODE_CARRY_ALL_REMAINING + MODE_PAY_FEES_SEPARATELY);
+// Отправляет ВСЕ оставшееся, fees из value контракта
+```
+
+## Техника 3: Уменьшить storage
+
+### Cleanup pattern
+
+```javascript
+// Gas-bounded cleanup
+const MAX_CLEANUP_PER_TX = 20;
+
+recv_internal(msg) {
+  // Cleanup expired entries (amortized cost)
+  let cleaned = 0;
+  for (let key in self.dict) {
+    if (self.dict[key].expiry < now() && cleaned < MAX_CLEANUP_PER_TX) {
+      self.dict.delete(key);
+      cleaned++;
+    }
+  }
+  
+  // Normal processing...
+}
+```
+
+### Self-destruct pattern
+
+Для temporary contracts (escrow, auction, voting round):
+
+```javascript
+// После завершения — уничтожить контракт
+if (self.state == STATE_COMPLETED) {
+  // Отправить оставшийся баланс owner-у и уничтожить
+  send(self.owner, 0, "completed", MODE_CARRY_ALL_REMAINING + MODE_DESTROY_IF_ZERO);
+  // Контракт уничтожен → 0 storage fee
+}
+```
+
+## Техника 4: Gas Estimation для пользователей
+
+### Проблема: сколько TON отправить?
+
+Пользователь не знает, сколько gas нужно для операции. Слишком мало → transaction fails. Слишком много → excess locked.
+
+### Решение: Gas estimation get-method
+
+```javascript
+// Get-method (off-chain, бесплатно)
+get_swap_gas_estimate(amount, slippage) {
+  let compute = 10000;  // estimated gas units
+  let forward = get_forward_fee(2, 700);  // 2 cells, 700 bits
+  let messages = 3;  // 3-hop chain
+  
+  return compute * gas_price + forward * messages + SAFETY_MARGIN;
+}
+```
+
+### dApp integration
+
+```javascript
+// Frontend
+const estimate = await pool.getSwapGasEstimate(amount, slippage);
+const userFriendlyEstimate = fromNano(estimate);
+
+// Show to user: "Estimated fee: ~0.03 TON"
+await wallet.send(pool.address, estimate, swapBody);
+```
+
+## Техника 5: Excess Return
+
+Всегда возвращайте неиспользованный gas:
+
+```
+Pattern: forward excess to original sender
+
+recv_internal(msg) {
+  // Process operation...
+  
+  // Return excess
+  let used = compute_fee + storage_fee;
+  let excess = msg.value - used;
+  
+  if (excess > MIN_EXCESS_RETURN) {
+    send(msg.response_destination, excess, "excess_return", 
+         MODE_PAY_FEES_SEPARATELY);
+  }
+}
+```
+
+<Callout type="tip">
+**Golden Rule: пользователь отправляет с запасом, контракт возвращает excess**
+
+Это UX pattern всех TON DeFi: пользователь отправляет 0.1 TON, фактический cost 0.03 TON, 0.07 TON возвращается. dApp показывает estimated fee заранее.
+</Callout>
+
+## Gas Optimization Checklist
+
+<DiagramContainer title="Gas Optimization Categories: Compute vs Forward vs Storage">
+<Grid columns={3}>
+  <Tooltip content="Compute optimization — уменьшение TVM gas units на выполнение кода. Экономия 10-30%. Single state load вместо multiple loads. Pre-computed constants вместо runtime calculation. Minimize dictionary traversals">
+    <DataBox label="Compute Gas (10-30% savings)">
+      Single state load • Pre-computed constants • Minimize dict ops
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="Forward fee optimization — уменьшение стоимости отправки messages. Экономия 20-50%. Каждый bit в body = cost. Убирайте redundant поля (sender знают из msg, timestamp = now()). Efficient encoding">
+    <DataBox label="Forward Fees (20-50% savings)">
+      Minimal message body • Remove redundant fields • Efficient encoding
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="Storage optimization — уменьшение постоянного storage fee. Экономия 20-60%. Storage fee начисляется КАЖДЫЙ блок. Bit packing, cleanup expired data, self-destruct temporary contracts">
+    <DataBox label="Storage Fees (20-60% savings)">
+      Bit packing • Cleanup expired • Self-destruct pattern
+    </DataBox>
+  </Tooltip>
+</Grid>
+<FlowRow>
+  <Tooltip content="UX layer: газ estimation get-method (off-chain, бесплатно) показывает пользователю expected fee. Excess return возвращает неиспользованный gas. Pattern всех TON DeFi: отправь с запасом → получи сдачу">
+    <FlowNode label="UX: Gas Estimation + Excess Return" />
+  </Tooltip>
+  <Arrow direction="right" />
+  <Tooltip content="Architecture level: наибольший impact. Fewer message hops (3-hop → 2-hop = -33% forward fees). Pull vs push pattern. Redesign для elimination целых категорий messages. 30-70% savings">
+    <FlowNode label="Architecture: Fewer Hops (30-70% savings)" />
+  </Tooltip>
+</FlowRow>
+</DiagramContainer>
+
+| Категория | Оптимизация | Экономия |
+|-----------|------------|----------|
+| **Compute** | Single state load, pre-computed constants | 10-30% |
+| **Forward** | Minimal message body, efficient encoding | 20-50% |
+| **Storage** | Cleanup expired, self-destruct, bit packing | 20-60% |
+| **UX** | Gas estimation get-method, excess return | Better UX |
+| **Architecture** | Fewer message hops, pull vs push | 30-70% |
+
+<KnowledgeCheck>
+Gas optimization — это не micro-optimization, а architectural discipline. Biggest wins: fewer messages (architectural), smaller state (storage), compact encoding (forward). Micro-optimizations (fewer TVM instructions) дают < 5% savings. Следующий урок: экономика контрактов — как проектировать sustainable contract economics.
+</KnowledgeCheck>

@@ -1,0 +1,43 @@
+{
+  "lessonSlug": "05-data-structures/01-cells",
+  "moduleId": "05-data-structures",
+  "_meta": {
+    "idPrefix": "sdton-m05-01"
+  },
+  "questions": [
+    {
+      "id": "sdton-m05-01-q1",
+      "type": "multiple-choice",
+      "question": "Cell на TON может хранить максимум 1023 бит данных. Сколько TON-адресов (267 бит каждый) поместится в одну cell?",
+      "options": [
+        {
+          "id": "a",
+          "text": "4 адреса (267 × 4 = 1068, меньше 1023 + references)"
+        },
+        {
+          "id": "b",
+          "text": "1 адрес — остальное через references"
+        },
+        {
+          "id": "c",
+          "text": "3 адреса (267 × 3 = 801 бит, помещается в 1023. Четвёртый = 1068 > 1023, не помещается)"
+        },
+        {
+          "id": "d",
+          "text": "Неограниченное число — cell расширяется автоматически"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "267 × 3 = 801 бит ≤ 1023 бит → помещается. 267 × 4 = 1068 бит > 1023 бит → четвёртый адрес нужно хранить в referenced cell. При проектировании state layout всегда считайте bits: field_1 + field_2 + ... ≤ 1023.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m05-01-q2",
+      "type": "true-false",
+      "question": "Hash root cell контракта на TON является Merkle root всего дерева state — изменение любой nested cell изменяет hash root.",
+      "correctAnswer": true,
+      "explanation": "Да. hash(cell) = SHA256(data + hash(ref_0) + hash(ref_1) + ...). Изменение любой nested cell каскадно меняет hash-и вверх до root. Это свойство используется для Merkle proofs: доказательство включения данных в state без скачивания всего state.",
+      "bloomLevel": "conceptual"
+    }
+  ]
+}

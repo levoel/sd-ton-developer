@@ -1,0 +1,203 @@
+---
+title: "Custom Sharded Contracts: пошаговый гайд"
+description: "Как спроектировать и реализовать собственные шардированные контракты для вашего приложения"
+order: 5
+difficulty: "advanced"
+estimatedTime: 20
+topics: ["Custom Contracts", "Sharding", "Design Guide", "Implementation"]
+---
+
+# Custom Sharded Contracts
+
+## Когда вам нужен custom sharded contract
+
+Jetton и NFT покрывают стандартные use cases. Но если ваша система имеет **уникальный per-user state**, вам нужен custom sharded design.
+
+### Примеры custom sharded state
+
+| Приложение | Per-user state | Master state |
+|-----------|---------------|-------------|
+| Subscription service | expiry_date, plan_level, features | plans[], pricing, admin |
+| Reputation system | score, history[], badges[] | scoring_rules, thresholds |
+| Game inventory | items[], currencies, level | game_config, global_stats |
+| Voting | votes[], delegations | proposals[], results |
+
+## 5-Step Design Process
+
+### Step 1: Определить Master vs Child state
+
+```
+Правило: Master хранит GLOBAL, Child хранит PER-USER
+
+[NO] Плохо: Master хранит Map<user, subscription>
+[OK] Хорошо: 
+  Master: plans[], pricing
+  Child(user): plan_level, expiry, features
+```
+
+### Step 2: Определить message flow
+
+Нарисуйте **все** операции как message flows:
+
+```
+Operation: Subscribe
+
+User → Master: "subscribe(plan_id)" + payment
+Master → Child(user): "set_subscription(plan_id, expiry)" (deploy if needed)
+Child(user) → User: "subscription_confirmed(details)"
+
+Operation: Check subscription (off-chain)
+
+dApp → Master.get_child_address(user) → child_address
+dApp → Child.get_subscription_data() → {plan, expiry, features}
+```
+
+### Step 3: Implement verification
+
+```javascript
+// Master: verify incoming child messages
+recv_internal(msg) {
+  if (op == op::child_report) {
+    let claimed_user = msg.body.read_address();
+    let expected_child = calc_child_address(claimed_user);
+    
+    // Trustless verification
+    throw_unless(401, sender == expected_child);
+    
+    // Process report...
+  }
+}
+
+// Child: verify incoming master messages  
+recv_internal(msg) {
+  if (op == op::update_subscription) {
+    // Only Master can update
+    throw_unless(401, sender == self.master_address);
+    
+    // Process update...
+  }
+}
+```
+
+### Step 4: Handle lifecycle
+
+```
+Child Lifecycle:
+1. First interaction → deploy (via Master or self-deploy)
+2. Active → processing messages
+3. Empty/expired → may be frozen (balance → 0)
+4. Refunded → self-destruct (optional, saves storage)
+```
+
+### Step 5: Get-methods для discovery
+
+```javascript
+// Master get-methods (off-chain, free)
+get_child_address(user: Address): Address {
+  return calc_child_address(user);
+}
+
+get_child_code(): Cell {
+  return self.child_code;
+}
+
+// Child get-methods
+get_child_data(): (Int, Address, Slice) {
+  return (self.balance, self.owner, self.data);
+}
+```
+
+## Complete Example: Loyalty Points System
+
+### Requirements
+- Users earn points for purchases
+- Points can be redeemed for discounts
+- Global: exchange rate, max points per user
+- Per-user: points balance, history
+
+### Architecture
+
+<DiagramContainer title="Loyalty Points: Sharded Architecture" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <div className="flex justify-center">
+      <Tooltip content="Master: global config, exchange rate, admin. NO user balances.">
+        <DataBox label="Loyalty Master" className="border-blue-500/30 w-64">
+          <div className="text-xs space-y-1">
+            <div>exchange_rate: 100 points = 1 TON</div>
+            <div>max_points: 10,000</div>
+            <div>total_issued: 5,000,000</div>
+            <div>admin: merchant_address</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+    </div>
+    <FlowRow className="gap-2 justify-center">
+      <Arrow direction="down" />
+      <Arrow direction="down" />
+    </FlowRow>
+    <FlowRow className="gap-4 justify-center">
+      <Tooltip content="User 1 loyalty card — independent contract in its own shard">
+        <DataBox label="User 1 Card" className="border-emerald-500/30 w-44">
+          <div className="text-xs space-y-1">
+            <div>owner: user_1</div>
+            <div>points: 500</div>
+            <div>tier: silver</div>
+            <div>last_purchase: timestamp</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+      <Tooltip content="User 2 loyalty card — can be in different shard">
+        <DataBox label="User 2 Card" className="border-emerald-500/30 w-44">
+          <div className="text-xs space-y-1">
+            <div>owner: user_2</div>
+            <div>points: 2,300</div>
+            <div>tier: gold</div>
+            <div>last_purchase: timestamp</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+### Message Flows
+
+```
+Earn Points:
+Merchant → Master: "award_points(user, amount)"
+Master → verify merchant, check limits
+Master → Child(user): "add_points(amount)" [deploy if new]
+Child: points += amount, update tier
+
+Redeem Points:
+User → Child(user): "redeem(amount)"
+Child → verify owner, check balance
+Child → Master: "redeem_report(user, amount)"
+Master → verify child, transfer discount/TON
+Master → Child(user): "redeem_confirmed(remaining)"
+```
+
+## Common Mistakes
+
+### Mistake 1: Too much data in Master
+```
+[NO] Master stores: total_points_per_user[] ← это per-user state!
+[OK] Master stores: total_issued (aggregate only)
+```
+
+### Mistake 2: No verification between Master and Child
+```
+[NO] Child accepts messages from anyone
+[OK] Child accepts only from verified Master (sender == self.master)
+```
+
+### Mistake 3: Forgetting child deployment gas
+```
+[NO] Master sends exactly compute_gas to deploy child
+[OK] Master sends compute_gas + storage_deposit + safety_margin
+   (child needs balance to survive storage fees!)
+```
+
+<KnowledgeCheck>
+Custom sharded contracts следуют той же архитектуре, что Jetton и NFT: Master (global) + Child (per-user). 5 шагов: определить state split → message flows → verification → lifecycle → get-methods. Каждый шаг имеет свои trade-offs и gotchas. Применяйте этот процесс к любой системе с per-user state на TON.
+</KnowledgeCheck>

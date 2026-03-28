@@ -1,0 +1,153 @@
+---
+title: "Deterministic Addresses и Contract Discovery"
+description: "Вычисление адресов контрактов до deployment и trustless discovery без registry"
+order: 4
+difficulty: "advanced"
+estimatedTime: 15
+topics: ["Deterministic Address", "State Init", "Contract Discovery", "Verification"]
+---
+
+# Deterministic Addresses и Contract Discovery
+
+## Проблема: как найти контракт?
+
+На Ethereum: вы вызываете `token.balanceOf(alice)` — контракт хранит mapping. На TON: балансы в **отдельных контрактах**. Как найти контракт, хранящий баланс Alice?
+
+## Решение: Deterministic Address Computation
+
+Адрес контракта на TON = `hash(workchain_id + state_init)`, где `state_init = code + initial_data`.
+
+```
+Формула:
+address = hash(
+  workchain: 0,                        // Workchain 0
+  state_init: {
+    code: jetton_wallet_code,           // Bytecode кошелька
+    data: initial_data(owner, master)   // Начальные данные
+  }
+)
+
+Если мы знаем:
+  - jetton_wallet_code (публичный — в Jetton Master)
+  - owner (адрес Alice)
+  - master (адрес Jetton Master)
+
+→ Мы можем вычислить адрес Alice's Jetton Wallet
+  БЕЗ on-chain запроса!
+```
+
+<DiagramContainer title="Deterministic Address: вычисление вместо lookup" className="my-6">
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
+    <Tooltip content="Ethereum: вызвать функцию контракта чтобы узнать адрес — стоит gas">
+      <DataBox label="Ethereum: Lookup" className="border-red-500/30">
+        <div className="text-xs space-y-1">
+          <div>1. Call token.balanceOf(alice)</div>
+          <div>2. Один контракт, один lookup</div>
+          <div className="text-yellow-400">Требует on-chain call</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="TON: вычислить адрес off-chain из публичных данных — бесплатно">
+      <DataBox label="TON: Compute" className="border-emerald-500/30">
+        <div className="text-xs space-y-1">
+          <div>1. Знаем: code + owner + master</div>
+          <div>2. Вычисляем: hash(state_init)</div>
+          <div className="text-emerald-400">Off-chain, бесплатно, мгновенно</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+  </div>
+</DiagramContainer>
+
+## Практика: вычисление Jetton Wallet Address
+
+```javascript
+// Off-chain (TypeScript, @ton/core)
+import { Address, Cell, beginCell, contractAddress } from '@ton/core';
+
+function getJettonWalletAddress(
+  ownerAddress: Address,
+  masterAddress: Address,
+  walletCode: Cell
+): Address {
+  // Начальные данные для wallet контракта
+  const data = beginCell()
+    .storeCoins(0)              // initial balance = 0
+    .storeAddress(ownerAddress)  // owner
+    .storeAddress(masterAddress) // jetton master
+    .storeRef(walletCode)       // wallet code (for verification)
+    .endCell();
+
+  // StateInit = code + data
+  const stateInit = { code: walletCode, data };
+
+  // Address = hash(workchain + state_init)
+  return contractAddress(0, stateInit);
+}
+```
+
+### Свойства deterministic addresses
+
+1. **Предсказуемость**: адрес известен **до** deployment
+2. **Уникальность**: одинаковый code + data → одинаковый адрес (всегда)
+3. **Immutability**: адрес не может измениться после deployment
+4. **Verifiability**: любой может проверить `hash(state_init) == actual_address`
+
+## Contract Discovery без Registry
+
+### Паттерн: Get-method discovery
+
+Master Contract предоставляет get-method для вычисления child address:
+
+```javascript
+// Jetton Master get-method (off-chain call, бесплатно)
+get_wallet_address(owner_address: Slice): Slice {
+  return calculate_wallet_address(owner_address);
+}
+```
+
+dApp workflow:
+1. Вызвать `master.get_wallet_address(alice)` → получить wallet_address
+2. Вызвать `wallet.get_wallet_data()` → получить balance
+
+Оба вызова **бесплатны** (get-methods, off-chain).
+
+## Security: Preventing Fake Contracts
+
+### Атака: Impersonation
+
+Злоумышленник деплоит контракт с адресом, похожим на легитимный wallet, и отправляет `internal_transfer` в Master.
+
+### Защита: Address Verification
+
+```
+Verification в Master:
+1. Получить internal_transfer от sender
+2. Вычислить expected_address = calc_wallet(claimed_owner)
+3. sender == expected_address? 
+   → Да: легитимный wallet, принять
+   → Нет: подделка, ОТКЛОНИТЬ
+```
+
+Эта защита работает потому что:
+- Злоумышленник **не может** создать контракт с нужным адресом (hash collision невозможен)
+- Адрес = `hash(code + data)`, злоумышленник не может подделать code или data
+
+<Callout type="tip">
+**Pattern: Trustless Cross-Contract Verification**
+
+Этот паттерн применим везде: DEX pool проверяет что LP wallet легитимный, Lending market проверяет что position contract легитимный. Нет whitelist-ов, нет admin. Математика обеспечивает trust.
+</Callout>
+
+## Design Guidelines
+
+| Guideline | Описание |
+|-----------|---------|
+| **Provide get-methods** | Master всегда должен иметь get_child_address(params) |
+| **Verify senders** | Вычислять expected address и сравнивать с actual sender |
+| **Include code in init_data** | Child хранит wallet_code ref для self-verification |
+| **Predictable init_data** | Все поля init_data должны быть deterministic |
+
+<KnowledgeCheck>
+Deterministic addresses — фундамент trust model на TON. Вычисление вместо lookup, verification вместо whitelist, математика вместо admin. Этот паттерн используется в Jetton, NFT, DEX, Lending — везде, где контракты взаимодействуют в sharded environment. В следующем уроке: custom sharded contracts — как применить эти паттерны к вашим собственным системам.
+</KnowledgeCheck>

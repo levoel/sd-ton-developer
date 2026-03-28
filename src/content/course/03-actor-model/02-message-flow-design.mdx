@@ -1,0 +1,193 @@
+---
+title: "Message Flow Design"
+description: "Проектирование потоков сообщений между контрактами: message chains, gas forwarding, и ordering"
+order: 2
+difficulty: "intermediate"
+estimatedTime: 20
+topics: ["Message Flow", "Gas Forwarding", "Message Chain", "Ordering"]
+---
+
+# Message Flow Design
+
+## Проектирование цепочек сообщений
+
+На TON каждая сложная операция — это **цепочка сообщений** между контрактами. Проектирование этих цепочек — ключевой навык TON System Design.
+
+### Пример: Jetton Transfer
+
+Простейшая операция — перевод Jetton токена — уже требует 3 сообщения:
+
+<DiagramContainer title="Jetton Transfer: 3 сообщения" className="my-6">
+  <FlowColumn className="p-4 gap-1">
+    <FlowRow className="gap-3 justify-center">
+      <Tooltip content="Шаг 1: Пользователь отправляет запрос на свой Jetton Wallet">
+<FlowNode variant="input"> User</FlowNode>
+      </Tooltip>
+      <Arrow direction="right" />
+      <Tooltip content="msg 1: transfer(amount, to, fwd_payload)">
+        <FlowNode variant="process">Sender Wallet</FlowNode>
+      </Tooltip>
+    </FlowRow>
+    <div className="flex justify-center">
+      <Arrow direction="down" />
+    </div>
+    <FlowRow className="gap-3 justify-center">
+      <Tooltip content="msg 2: internal_transfer(amount, from) — шаг 2">
+        <FlowNode variant="process">Sender Wallet</FlowNode>
+      </Tooltip>
+      <Arrow direction="right" />
+      <Tooltip content="Получатель Jetton Wallet зачисляет баланс">
+        <FlowNode variant="process">Receiver Wallet</FlowNode>
+      </Tooltip>
+    </FlowRow>
+    <div className="flex justify-center">
+      <Arrow direction="down" />
+    </div>
+    <FlowRow className="gap-3 justify-center">
+      <Tooltip content="msg 3: transfer_notification — уведомление owner о получении">
+        <FlowNode variant="process">Receiver Wallet</FlowNode>
+      </Tooltip>
+      <Arrow direction="right" />
+      <Tooltip content="Owner контракт (или кошелёк) получает уведомление">
+<FlowNode variant="output"> Receiver Owner</FlowNode>
+      </Tooltip>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+```
+Jetton Transfer Flow:
+1. User → external msg → Sender Jetton Wallet: "transfer 100 tokens to Bob"
+2. Sender Wallet → internal msg → Receiver Wallet: "internal_transfer(100, from=Alice)"
+3. Receiver Wallet → internal msg → Bob: "transfer_notification(100, from=Alice)"
+
+Gas flow:
+User отправляет ~0.1 TON → Sender Wallet забирает gas → forward остаток →
+→ Receiver Wallet забирает gas → forward остаток → Bob
+```
+
+### Правила проектирования message flows
+
+**Правило 1: Рассчитайте gas для всей цепочки**
+
+Начальное сообщение должно содержать достаточно TON для **всех** hop-ов:
+
+```
+Total gas = gas_step_1 + fwd_fee_1 + gas_step_2 + fwd_fee_2 + ... + safety_margin
+```
+
+**Правило 2: Каждый контракт отвечает за forward**
+
+Контракт получает сообщение с value → использует часть для compute → forward остаток:
+
+```
+recv_internal(msg) {
+  int my_gas = 10_000_000;  // ~0.01 TON для compute
+  int remaining = msg.value - my_gas;
+  
+  // Forward оставшийся value следующему в цепочке
+  send(next_contract, remaining, body, SEND_MODE_PAY_FEES_SEPARATELY);
+}
+```
+
+**Правило 3: Терминальный контракт возвращает excess**
+
+Последний контракт в цепочке должен вернуть неиспользованный gas отправителю:
+
+```
+// Последний контракт — вернуть excess
+int excess = msg.value - compute_fee - storage_fee;
+if (excess > MIN_RETURN_AMOUNT) {
+  send(original_sender, excess, "excess", SEND_MODE_IGNORE_ERRORS);
+}
+```
+
+## Gas Forwarding Strategies
+
+### Strategy 1: Fixed Gas Forward
+
+```
+send(target, ton("0.05"), body, mode);
+```
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Простой
+- <Icon name="alert" className="text-red-400" size="1.2em" /> Может быть недостаточно / слишком много
+- <Icon name="alert" className="text-red-400" size="1.2em" /> Не адаптируется к gas price changes
+
+### Strategy 2: Percentage Forward
+
+```
+int forward = msg.value * 80 / 100;  // 80% вперёд
+send(target, forward, body, mode);
+```
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Адаптивный
+- <Icon name="alert" className="text-red-400" size="1.2em" /> На длинных цепочках значение уменьшается экспоненциально
+
+### Strategy 3: Calculated Forward (рекомендуется)
+
+```
+int fwd_fee = get_forward_fee(cells, bits, is_masterchain);
+int compute_fee = GAS_ESTIMATE * gas_price;
+int forward = fwd_fee + compute_fee + SAFETY_MARGIN;
+send(target, forward, body, mode);
+```
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Точный
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Адаптируется к network conditions
+- <Icon name="alert" className="text-red-400" size="1.2em" /> Сложнее в реализации
+
+## Ordering Guarantees
+
+### Intra-shard ordering
+
+Сообщения между контрактами в **одном шарде** доставляются в **порядке отправки** (FIFO).
+
+### Cross-shard ordering
+
+Между разными шардами порядок **не гарантирован**:
+
+```
+Contract A отправляет:
+  msg1 → Contract B (shard X)
+  msg2 → Contract C (shard Y)
+
+Возможные порядки обработки:
+  [OK] msg1, msg2
+  [OK] msg2, msg1  ← тоже возможно!
+```
+
+<Callout type="warning">
+**Проектируйте для out-of-order**
+
+Если ваша логика зависит от порядка обработки сообщений разными контрактами — **перепроектируйте**. Используйте state machine с явными состояниями вместо implicit ordering.
+</Callout>
+
+## Паттерн: Request-Response
+
+Когда нужно получить данные от другого контракта:
+
+```
+// Contract A: отправить запрос
+send(contractB, gas, {op: op::get_price, query_id: 123}, bounce: true);
+// Сохранить pending запрос в state
+self.pending_queries[123] = {callback: process_swap, ...};
+
+// Contract B: обработать запрос и ответить
+recv_internal(msg) {
+  if (op == op::get_price) {
+    int price = calculate_price();
+    send(msg.sender, excess, {op: op::price_response, query_id, price}, bounce: false);
+  }
+}
+
+// Contract A: обработать ответ
+recv_internal(msg) {
+  if (op == op::price_response) {
+    let pending = self.pending_queries[msg.query_id];
+    pending.callback(msg.price);
+    delete self.pending_queries[msg.query_id];
+  }
+}
+```
+
+<KnowledgeCheck>
+Message flow design — центральный навык TON System Design. Каждая операция = цепочка сообщений. Gas forwarding, ordering guarantees, и request-response pattern — фундамент для всех последующих модулей. В следующем уроке: bounce handling и error recovery.
+</KnowledgeCheck>

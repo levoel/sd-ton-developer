@@ -1,0 +1,61 @@
+{
+  "lessonSlug": "04-contract-sharding/02-jetton-pattern",
+  "moduleId": "04-contract-sharding",
+  "_meta": {
+    "idPrefix": "sdton-m04-02"
+  },
+  "questions": [
+    {
+      "id": "sdton-m04-02-q1",
+      "type": "multiple-choice",
+      "question": "Jetton transfer от Alice к Bob. Bob никогда не получал этот токен. Что произойдёт при получении internal_transfer?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Alice's Wallet включает state_init в сообщение — Bob's Wallet будет автоматически задеплоен при получении. TON игнорирует state_init если контракт уже существует"
+        },
+        {
+          "id": "b",
+          "text": "Transfer откажет — Bob's Wallet не существует"
+        },
+        {
+          "id": "c",
+          "text": "Master должен сначала создать Bob's Wallet"
+        },
+        {
+          "id": "d",
+          "text": "Bob должен вручную создать wallet перед получением"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Lazy deployment: sender включает state_init (code + initial_data) в internal_transfer message. Если Bob's Wallet не существует — TON деплоит его автоматически из state_init. Если существует — state_init игнорируется. Это beautiful design: отправитель не знает (и не должен знать), существует ли wallet получателя.",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "sdton-m04-02-q2",
+      "type": "multiple-choice",
+      "question": "Злоумышленник отправляет internal_transfer(1000000, fake_owner) напрямую в Bob's Wallet. Почему атака не сработает?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Bob's Wallet проверяет цифровую подпись"
+        },
+        {
+          "id": "b",
+          "text": "Bob's Wallet вычисляет expected sender address = hash(wallet_code + init_data(claimed_owner, master)) и сравнивает с actual sender. Злоумышленник не может создать контракт с нужным адресом (collision resistance)"
+        },
+        {
+          "id": "c",
+          "text": "TON блокирует все подозрительные транзакции"
+        },
+        {
+          "id": "d",
+          "text": "Master Contract проверяет каждый transfer"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Sender address verification: Bob's Wallet вычисляет ожидаемый адрес sender-а из claimed_owner. Если actual sender != expected address — сообщение от не-легитимного wallet, отклоняется. Злоумышленник не может создать контракт с произвольным адресом (SHA-256 collision resistant).",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

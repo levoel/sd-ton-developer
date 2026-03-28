@@ -1,0 +1,119 @@
+{
+  "lessonSlug": "11-security/_exam",
+  "moduleId": "11-security",
+  "examTitle": "Экзамен: Безопасность и Upgradability",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdton-m11-exam"
+  },
+  "questions": [
+    {
+      "id": "sdton-m11-exam-q1",
+      "type": "multiple-choice",
+      "question": "Злоумышленник отправляет internal_transfer(1M tokens) напрямую в Jetton Wallet контракт (bypass Jetton Master). Почему атака не удастся?",
+      "options": [
+        {
+          "id": "a",
+          "text": "TVM автоматически блокирует suspicious transactions"
+        },
+        {
+          "id": "b",
+          "text": "Internal messages не могут содержать transfer operations"
+        },
+        {
+          "id": "c",
+          "text": "Wallet verifies: sender_address == calc_address(wallet_code, init_data(claimed_from, master)). Злоумышленник не может создать контракт с deterministic address легитимного wallet → sender ≠ expected → reject"
+        },
+        {
+          "id": "d",
+          "text": "Master Contract проверяет каждый transfer в real-time"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите M04: Deterministic Addresses — Security: Preventing Fake Contracts",
+      "explanation": "Sender address verification: wallet вычисляет expected address для claimed sender (hash(wallet_code + init_data)). Если actual sender ≠ expected → fake message → reject. Hash collision (создать контракт с нужным адресом) computationally infeasible (SHA-256). No whitelist needed — pure math verification.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m11-exam-q2",
+      "type": "multiple-choice",
+      "question": "DeFi контракт с TVL $5M обнаружена critical vulnerability. Какой immediate response?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Подождать, пока хакер найдёт и exploit-ает — тогда починить"
+        },
+        {
+          "id": "b",
+          "text": "Позвонить в TON Foundation"
+        },
+        {
+          "id": "c",
+          "text": "Redeploy новый контракт и попросить всех мигрировать"
+        },
+        {
+          "id": "d",
+          "text": "Emergency: 1) Pause contract (admin function). 2) Assess scope. 3) Deploy patched code via emergency upgrade. 4) Resume operations. 5) Post-mortem + bug bounty payout if responsible disclosure"
+        }
+      ],
+      "correctAnswer": "d",
+      "studyHint": "Повторите M12: Production Operations — Emergency Actions и Incident Response",
+      "explanation": "Standard incident response: 1) Pause — prevent exploitation. 2) Assess — understand vulnerability scope. 3) Patch — deploy fix via emergency upgrade (short timelock). 4) Resume — controlled unpause. 5) Post-mortem — document, improve, pay bug bounty. Speed is critical for $5M at risk.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m11-exam-q3",
+      "type": "multiple-choice",
+      "question": "Вы реализуете upgradeable contract на TON. Admin отправляет новый code через set_code(). Какой обязательный шаг ПОСЛЕ set_code() в той же транзакции?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Ничего — set_code() автоматически мигрирует data"
+        },
+        {
+          "id": "b",
+          "text": "set_data(migrate(old_data)) — нужно адаптировать persistent storage под новую data layout. Без миграции новый code прочитает старый data layout → undefined behavior / потеря средств"
+        },
+        {
+          "id": "c",
+          "text": "Перезапустить контракт через redeploy"
+        },
+        {
+          "id": "d",
+          "text": "Отправить notification всем пользователям о новой версии"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите урок 2: Upgradability Patterns — set_code() + set_data() migration",
+      "explanation": "set_code() меняет только code, не data. Если новый code ожидает другой data layout (новые поля, изменённый порядок), а data не мигрирован — slice parsing сломается. set_data(migrate(old_data)) в той же транзакции гарантирует atomic code+data upgrade. migrate() трансформирует old layout → new layout.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m11-exam-q4",
+      "type": "multiple-choice",
+      "question": "Аудитор нашёл: контракт принимает internal message без проверки op code. Любой msg с достаточным gas обрабатывается default handler-ом, который изменяет critical state. Какой класс уязвимости?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Это не уязвимость — default handler нормальная практика"
+        },
+        {
+          "id": "b",
+          "text": "DoS vulnerability — перегрузка контракта"
+        },
+        {
+          "id": "c",
+          "text": "Access Control violation: отсутствие проверки op code + sender позволяет любому вызвать privileged operations. Fix: explicit op routing (if op == X) + sender verification для каждого privileged op. Unknown ops → throw(0xFFFF)"
+        },
+        {
+          "id": "d",
+          "text": "Reentrancy attack"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите урок 1: Security Patterns — Message Validation и Access Control",
+      "explanation": "Missing op code routing = catch-all handler для всех messages. Если default handler модифицирует state, злоумышленник может отправить произвольный message и изменить critical state. Fix: explicit routing по op codes, throw для unknown ops, sender verification для admin operations. Reentrancy (d) невозможен на TON (actor model).",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

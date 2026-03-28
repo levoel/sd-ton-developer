@@ -1,0 +1,69 @@
+{
+  "lessonSlug": "02-ton-architecture/01-multi-layer-architecture",
+  "moduleId": "02-ton-architecture",
+  "_meta": {
+    "idPrefix": "sdton-m02-01"
+  },
+  "questions": [
+    {
+      "id": "sdton-m02-01-q1",
+      "type": "multiple-choice",
+      "question": "Зачем TON использует отдельный masterchain, а не хранит конфигурацию в шардах?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Masterchain быстрее шардов"
+        },
+        {
+          "id": "b",
+          "text": "Masterchain дешевле в обслуживании"
+        },
+        {
+          "id": "c",
+          "text": "Шарды не могут хранить данные больше 1 KB"
+        },
+        {
+          "id": "d",
+          "text": "Отдельный masterchain для metadata обеспечивает быстрый global consensus (~5 сек) без необходимости синхронизировать все шарды для обновления конфигурации"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "Если конфигурация распределена по шардам, для global consensus нужно синхронизировать все шарды — bottleneck при 100+ шардах. Отдельный masterchain маленький (мало транзакций), обрабатывается всеми валидаторами, и обеспечивает единый snapshot состояния каждые ~5 сек.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m02-01-q2",
+      "type": "true-false",
+      "question": "В TON на март 2026 активен только один workchain (Workchain 0), хотя архитектурно TON поддерживает до 2^32 workchains.",
+      "correctAnswer": true,
+      "explanation": "Верно. Активен только Workchain 0 — основная рабочая цепочка с TVM. Потенциально TON поддерживает до 2^32 workchains с разными виртуальными машинами, но на практике пока используется только один. Дополнительные workchains — зарезервированная возможность для будущего масштабирования.",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "sdton-m02-01-q3",
+      "type": "multiple-choice",
+      "question": "Два контракта имеют адреса, начинающиеся с 0x0A... и 0x0B... При prefix_len=4, попадут ли они в один шард?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Нет — при prefix_len=4 первые 4 бита определяют шард. 0x0A = 0000_1010, 0x0B = 0000_1011 — первые 4 бита (0000) одинаковы, поэтому в одном шарде"
+        },
+        {
+          "id": "b",
+          "text": "Да — оба начинаются с 0x0, значит в одном шарде"
+        },
+        {
+          "id": "c",
+          "text": "Невозможно определить без знания workchain ID"
+        },
+        {
+          "id": "d",
+          "text": "Нет — каждый контракт всегда в своём шарде"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "При prefix_len=4 шард определяется первыми 4 битами адреса. 0x0A = 0000_1010 → prefix 0000. 0x0B = 0000_1011 → prefix 0000. Одинаковый prefix → один шард. Если нагрузка вырастет и шард разделится (prefix_len=5), они могут оказаться в разных шардах.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

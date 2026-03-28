@@ -1,0 +1,198 @@
+---
+title: "Cells: базовая единица данных TON"
+description: "Как TON хранит данные: Cell structure, references, и tree-based storage model"
+order: 1
+difficulty: "intermediate"
+estimatedTime: 20
+topics: ["Cells", "Data Storage", "Tree Structure", "References", "Bits"]
+---
+
+# Cells: базовая единица данных TON
+
+## Почему не bytes, а Cells
+
+Большинство блокчейнов хранят данные как **массивы байтов**. Ethereum storage — 256-bit slots, mapping от key к value. TON использует **принципиально другую модель**: данные хранятся в **Cells** — деревьях ячеек.
+
+## Что такое Cell
+
+Cell — это контейнер с двумя составляющими:
+
+1. **Data**: до 1023 бит (не байтов!) данных
+2. **References**: до 4 ссылок на другие cells
+
+```
+Cell structure:
+┌──────────────────────────┐
+│ Data: up to 1023 bits    │
+│ (127 bytes + 7 bits)     │
+├──────────────────────────┤
+│ Ref 0 → [child cell]    │
+│ Ref 1 → [child cell]    │
+│ Ref 2 → [child cell]    │
+│ Ref 3 → [child cell]    │
+└──────────────────────────┘
+```
+
+<DiagramContainer title="Cell: Data + References" className="my-6">
+  <div className="flex flex-col items-center gap-4 p-4">
+    <Tooltip content="Root cell содержит до 1023 бит данных и до 4 ссылок на дочерние cells">
+      <DataBox label="Root Cell" className="border-blue-500/30 w-72">
+        <div className="text-xs space-y-1">
+          <div>Data: 256 bits (address) + 120 bits (balance) + ...</div>
+          <div className="text-slate-400">Total: ≤ 1023 bits</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <FlowRow className="gap-6 justify-center">
+      <div className="flex flex-col items-center gap-1">
+        <Arrow direction="down" />
+        <Tooltip content="Ref 0: дочерняя cell с code контракта">
+          <DataBox label="Ref 0: Code" className="border-emerald-500/30 w-32">
+            <div className="text-[10px]">TVM bytecode</div>
+          </DataBox>
+        </Tooltip>
+      </div>
+      <div className="flex flex-col items-center gap-1">
+        <Arrow direction="down" />
+        <Tooltip content="Ref 1: дочерняя cell с data контракта">
+          <DataBox label="Ref 1: Data" className="border-purple-500/30 w-32">
+            <div className="text-[10px]">Persistent storage</div>
+          </DataBox>
+        </Tooltip>
+      </div>
+    </FlowRow>
+  </div>
+</DiagramContainer>
+
+## Почему деревья, а не массивы
+
+### Преимущества tree-based storage
+
+| Свойство | Массив (Ethereum) | Дерево (TON) |
+|----------|------------------|-------------|
+| **Merkle proof** | MPT (сложный) | Естественный (cell hash = Merkle root) |
+| **Partial access** | Нужен весь state | Можно загрузить только ветку |
+| **Serialization** | Custom format | Стандартный BoC |
+| **Sharing** | Невозможно | Cells можно sharing between structures |
+
+### Hash дерева = Merkle Root
+
+Каждая cell имеет **hash**, вычисляемый из:
+- Собственных данных (bits)
+- Hash-ей всех referenced cells
+
+```
+hash(root) = SHA256(
+  data_bits,
+  hash(ref_0),
+  hash(ref_1),
+  hash(ref_2),
+  hash(ref_3)
+)
+```
+
+Это значит: hash root cell — это **Merkle root** всего дерева. Изменение любой nested cell изменяет hash root.
+
+<Callout type="tip">
+**Для System Design**
+
+Merkle proof позволяет доказать, что конкретные данные принадлежат state определённого контракта, предъявив только path от root до нужной cell. Не нужно скачивать весь state. Это используется lite-clients для верификации без full node.
+</Callout>
+
+## Ограничения Cells
+
+| Параметр | Лимит | Влияние на design |
+|----------|-------|-------------------|
+| Data bits | 1023 bits (127 bytes) | Большие данные → разбить на несколько cells |
+| References | 4 per cell | Глубокие деревья → больше cells |
+| Depth | 1024 levels max | Рекурсивные структуры ограничены |
+| Total cells per state | Техн. не ограничено | Storage fee растёт с числом cells |
+
+### Что помещается в одну cell
+
+```
+Одна cell (1023 bits):
+[OK] Address: 267 bits (8 prefix + 256 hash + 3 workchain)
+[OK] Int256: 256 bits
+[OK] Coins: до 124 bits (VarInt)
+[OK] Boolean: 1 bit
+
+[NO] Два address: 267 × 2 = 534 bits → нужно 2 cells (или compact encoding)
+[NO] String 128 bytes: 1024 bits > 1023 → нужно split
+```
+
+## Storage Fee и размер state
+
+TON взимает storage fee за каждую cell в state контракта:
+
+```
+Storage fee formula:
+fee = cells_count × bits_price + cells_count × cell_price
+fee ≈ 0.00036 TON per KB per year (текущий rate)
+
+Пример:
+Contract с 100 cells × ~128 bytes = ~12.8 KB
+Annual storage fee ≈ 0.0046 TON
+
+Contract с 10,000 cells × ~128 bytes = ~1.28 MB  
+Annual storage fee ≈ 0.46 TON
+```
+
+<Callout type="warning">
+**Design Rule: минимизируйте cells**
+
+Storage fee пропорционально числу cells. Каждая cell стоит денег. При проектировании: pack данные максимально плотно, используйте VarInt вместо фиксированных int, удаляйте ненужные данные.
+</Callout>
+
+## Implications для System Design
+
+### 1. Планируйте cell layout
+
+Перед написанием кода определите, какие данные в какой cell:
+
+```
+Contract State Layout:
+Root Cell [1023 bits]:
+  ├── balance: 124 bits (Coins)
+  ├── owner: 267 bits  
+  ├── flags: 8 bits
+  └── remaining: 624 bits available
+  
+  Ref 0 → Data Cell [1023 bits]:
+    ├── total_supply: 124 bits
+    ├── metadata_url: ref to Snake cell
+    └── ...
+  
+  Ref 1 → Code Cell:
+    └── TVM bytecode (immutable after deploy)
+```
+
+### 2. Используйте references для больших данных
+
+Данные > 1023 bits → split across cells через references. Строки хранятся как **Snake cells** (цепочка cells через ref):
+
+```
+Snake encoding для строки "Hello, World!" (13 bytes = 104 bits):
+Cell 1: [104 bits: "Hello, World!"]  ← помещается в одну cell
+
+Snake encoding для 200-byte строки:
+Cell 1: [1016 bits: first 127 bytes] → Ref 0 →
+Cell 2: [584 bits: remaining 73 bytes]
+```
+
+### 3. Storage budget в архитектуре
+
+При проектировании системы рассчитайте storage budget:
+
+```
+Storage Budget Checklist:
+1. Сколько cells в state? (cells_count)
+2. Сколько bits per cell? (avg_bits)
+3. Annual storage fee? (cells × rate)
+4. Contract balance covers fee for how long?
+5. Who replenishes balance? (users via gas, admin, protocol fee)
+```
+
+<KnowledgeCheck>
+Cells — фундамент хранения данных на TON. 1023 bits + 4 references = минимальная единица. Storage fee = пропорционально cells. При проектировании: layout cells заранее, минимизируйте количество cells, рассчитайте storage budget. В следующем уроке: Bags of Cells (BoC) — как cells сериализуются для передачи по сети.
+</KnowledgeCheck>

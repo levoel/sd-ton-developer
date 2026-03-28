@@ -1,0 +1,162 @@
+---
+title: "Bags of Cells и сериализация"
+description: "BoC формат, сериализация данных для передачи и хранения, compact representations"
+order: 2
+difficulty: "intermediate"
+estimatedTime: 15
+topics: ["BoC", "Serialization", "Compact Encoding", "Data Transfer"]
+---
+
+# Bags of Cells (BoC) и сериализация
+
+## Что такое BoC
+
+**Bag of Cells (BoC)** — это бинарный формат сериализации дерева cells. BoC — это как JSON для TON: универсальный формат для передачи данных между нодами, контрактами и off-chain приложениями.
+
+```
+Cell tree (in memory):
+    Root
+   /    \
+ Ref0   Ref1
+  |
+ Ref0
+
+BoC (serialized):
+[header][cell_0][cell_1][cell_2][references_table]
+```
+
+### Где используется BoC
+
+| Контекст | Использование BoC |
+|----------|-------------------|
+| **Транзакции** | Message body сериализуется как BoC |
+| **State** | Контрактный state хранится как BoC |
+| **Deploy** | Code + initial data в state_init = BoC |
+| **API** | Результаты get-methods возвращаются как BoC |
+| **Storage** | Блоки и state snapshots = BoC файлы |
+
+## Сериализация данных в Cells
+
+### Builder и Slice
+
+Для работы с cells используются два типа:
+- **Builder** — для **записи** данных в cell (конструктор)
+- **Slice** — для **чтения** данных из cell (парсер)
+
+```javascript
+// Запись (Builder)
+let cell = beginCell()
+  .storeUint(op_code, 32)      // 32 bits — op code
+  .storeUint(query_id, 64)     // 64 bits — query ID
+  .storeCoins(amount)           // VarInt — amount
+  .storeAddress(recipient)      // 267 bits — address
+  .endCell();
+
+// Чтение (Slice)  
+let slice = cell.beginParse();
+let op = slice.loadUint(32);
+let qid = slice.loadUint(64);
+let amt = slice.loadCoins();
+let addr = slice.loadAddress();
+```
+
+### Compact Encoding Strategies
+
+TON использует компактные кодировки для экономии bits:
+
+<DiagramContainer title="Encoding Strategies" className="my-6">
+  <Grid columns={3} className="p-4 gap-2">
+    <DataBox label="Type" className="font-semibold">Encoding</DataBox>
+    <DataBox label="Size" className="font-semibold">Bits</DataBox>
+    <DataBox label="Use" className="font-semibold">Когда</DataBox>
+
+    <Tooltip content="UInt: фиксированный размер N бит. Используется для полей с известным диапазоном: op_code, query_id, status flags.">
+      <DataBox>UInt (fixed)</DataBox>
+    </Tooltip>
+    <DataBox>N bits (фиксировано)</DataBox>
+    <DataBox>op_code (32), query_id (64)</DataBox>
+
+    <Tooltip content="VarUInt: переменный размер 1-15 bytes. Маленькие значения занимают меньше бит. Идеален для Coins (суммы).">
+      <DataBox>VarUInt</DataBox>
+    </Tooltip>
+    <DataBox>1-15 bytes (динамически)</DataBox>
+    <DataBox>Coins (до 2^120)</DataBox>
+
+    <Tooltip content="Address: 267 бит = 8 бит prefix + 256 бит hash + 3 бита workchain. Стандартный формат TON-адреса.">
+      <DataBox>Address</DataBox>
+    </Tooltip>
+    <DataBox>267 bits</DataBox>
+    <DataBox>workchain + hash</DataBox>
+
+    <Tooltip content="Maybe: 1 бит flag (0=absent, 1=present) + value. Экономит биты для optional полей — 1 бит overhead вместо пустого значения.">
+      <DataBox>Maybe (optional)</DataBox>
+    </Tooltip>
+    <DataBox>1 bit + value (если есть)</DataBox>
+    <DataBox>Optional fields</DataBox>
+
+    <Tooltip content="Either: 1 бит flag (0=Left variant, 1=Right variant) + data. Для union типов — inline или в reference.">
+      <DataBox>Either (union)</DataBox>
+    </Tooltip>
+    <DataBox>1 bit + variant</DataBox>
+    <DataBox>Left/Right variants</DataBox>
+  </Grid>
+</DiagramContainer>
+
+## Design Implications
+
+### 1. Message body design
+
+Каждое сообщение имеет body — cell с данными. Проектируйте body заранее:
+
+```
+Standard Message Body Layout:
+├── op_code: uint32 (какая операция)
+├── query_id: uint64 (для tracking и idempotency)
+└── payload: depends on op_code
+
+Пример: Jetton Transfer
+├── op: 0xf8a7ea5 (32 bits)
+├── query_id: uint64 (64 bits)
+├── amount: VarInt coins (≤124 bits)
+├── destination: address (267 bits)
+├── response_destination: address (267 bits)
+├── custom_payload: Maybe ref
+└── forward_ton_amount: VarInt coins
+    forward_payload: Maybe ref
+
+Total: ~754 bits + optional refs
+```
+
+### 2. State layout optimization
+
+Минимизируйте bits и cells в state:
+
+```
+[NO] Wasteful:
+  status: uint256 (256 bits для значения 0-5)
+  
+[OK] Optimized:
+  status: uint3 (3 bits для значения 0-5)
+  
+Saved: 253 bits per cell = меньше storage fee
+```
+
+### 3. BoC size влияет на forward fee
+
+Forward fee пропорционально размеру BoC:
+
+```
+forward_fee = cells × cell_price + bits × bit_price
+
+Меньше cells/bits в message → меньше forward fee → дешевле для пользователя
+```
+
+<Callout type="tip">
+**Practical Rule: pack tightly, reference wisely**
+
+Pack maximum data into each cell (use all 1023 bits). Use references only when data doesn't fit or needs to be optional (Maybe). Every extra cell = extra storage fee + extra forward fee.
+</Callout>
+
+<KnowledgeCheck>
+BoC — универсальный формат сериализации на TON. Compact encoding (VarInt, Maybe, Either) экономит bits. Message body layout и state layout должны быть спроектированы заранее для оптимальной стоимости. В следующем уроке: TL-B — язык описания схем данных на TON.
+</KnowledgeCheck>

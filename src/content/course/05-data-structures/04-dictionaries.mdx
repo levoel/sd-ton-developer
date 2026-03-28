@@ -1,0 +1,187 @@
+---
+title: "Dictionaries и HashmapE"
+description: "Key-value хранилища в TON: HashmapE, Patricia trie и их ограничения"
+order: 4
+difficulty: "advanced"
+estimatedTime: 18
+topics: ["Hashmap", "Dictionary", "Patricia Trie", "Key-Value", "Storage"]
+---
+
+# Dictionaries и HashmapE
+
+## Проблема: как хранить key-value на TON
+
+На Ethereum: `mapping(address => uint)` — простой O(1) lookup. На TON cells не имеют random access — нужна специальная структура.
+
+## HashmapE: Patricia Trie в cells
+
+TON использует **HashmapE** — Patricia Trie, закодированный в дерево cells:
+
+```
+HashmapE = Hashmap with "Empty" variant
+  Empty: пустой dictionary (1 bit: 0)
+  Non-empty: root cell → Patricia trie (1 bit: 1, then ref to root)
+```
+
+<DiagramContainer title="HashmapE: Patricia Trie в cells" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <div className="flex justify-center">
+      <Tooltip content="Root node: общий prefix + два child nodes">
+        <DataBox label="Root" className="border-blue-500/30 w-48">
+          <div className="text-xs">prefix: common bits</div>
+        </DataBox>
+      </Tooltip>
+    </div>
+    <FlowRow className="gap-8 justify-center">
+      <div className="flex flex-col items-center gap-1">
+        <Arrow direction="down" />
+        <Tooltip content="Left branch: keys starting with 0">
+          <DataBox label="Left (0...)" className="border-emerald-500/30 w-36">
+            <div className="text-xs">key=0x0A → value</div>
+          </DataBox>
+        </Tooltip>
+      </div>
+      <div className="flex flex-col items-center gap-1">
+        <Arrow direction="down" />
+        <Tooltip content="Right branch: keys starting with 1">
+          <DataBox label="Right (1...)" className="border-purple-500/30 w-36">
+            <div className="text-xs">key=0x8B → value</div>
+          </DataBox>
+        </Tooltip>
+      </div>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+### Complexity
+
+| Операция | Complexity | Gas impact |
+|----------|-----------|-----------|
+| Get (lookup) | O(key_length) | Пропорционально depth trie |
+| Set (insert) | O(key_length) | Создание/модификация cells |
+| Delete | O(key_length) | Удаление cells, restructure |
+| Iteration | O(n) | Обход всех cells |
+
+### Ключевое ограничение: Gas
+
+```
+Dictionary с 1000 entries:
+  Set: ~5000 gas units (traversal + cell creation)
+  Get: ~3000 gas units (traversal)
+  
+Dictionary с 100,000 entries:
+  Set: ~50,000 gas units (deeper trie)
+  Get: ~30,000 gas units
+  
+→ БОЛЬШИЕ dictionaries = ДОРОГИЕ операции
+```
+
+## Design Patterns для Dictionaries
+
+### Pattern 1: Bounded Dictionary
+
+Ограничить размер dictionary:
+
+```
+// Максимум 100 entries
+if (dict.count() >= 100) {
+  throw(ERR_DICT_FULL);
+}
+dict.set(key, value);
+```
+
+Use case: whitelist (≤100 admin addresses), recent history (≤50 entries).
+
+### Pattern 2: Sharded Dictionary (использовать child contracts)
+
+Вместо одного большого dict — child contracts:
+
+```
+[NO] One contract, huge dict:
+  MasterContract { users: Dict<Address, UserData> }  // 100K entries
+
+[OK] Sharded:
+  MasterContract { user_code: Cell }
+  UserContract_1 { data: UserData }
+  UserContract_2 { data: UserData }
+  ...
+```
+
+### Pattern 3: Off-chain Index + On-chain Proofs
+
+Хранить полный индекс off-chain, on-chain — только Merkle root:
+
+```
+On-chain: merkle_root: bits256
+Off-chain: full dictionary + Merkle tree
+
+Verification:
+1. User provides: key, value, merkle_proof
+2. Contract verifies: proof against merkle_root
+3. If valid → accept value as authentic
+```
+
+## Storage Optimization Strategies
+
+### Strategy 1: Pack values tightly
+
+```
+[NO] Wasteful dict value:
+  value = beginCell()
+    .storeUint(status, 256)  // 256 bits for 0-5 value!
+    .endCell();
+
+[OK] Optimized:
+  value = beginCell()
+    .storeUint(status, 3)    // 3 bits for 0-5 value
+    .storeUint(timestamp, 32)
+    .storeCoins(amount)
+    .endCell();
+```
+
+### Strategy 2: Lazy deletion
+
+Вместо delete (дорогая restructure) — пометить как deleted:
+
+```
+// Lazy delete:
+value.is_deleted = true;  // 1 bit flag
+
+// Periodic cleanup (admin function):
+cleanup_deleted_entries();
+```
+
+### Strategy 3: Use inline data instead of dict
+
+Для маленького числа entries (≤ 4) — хранить inline:
+
+```
+// 3 admin addresses — НЕ нужен dict
+admin_1: MsgAddress  // 267 bits
+admin_2: MsgAddress  // 267 bits  
+admin_3: MsgAddress  // 267 bits
+Total: 801 bits ← fits in one cell!
+
+// vs dict (overhead):
+admins: Dict<uint8, MsgAddress>  // tree structure overhead
+```
+
+## Когда использовать Dict vs Child Contracts
+
+| Критерий | Dict (HashmapE) | Child Contracts |
+|----------|----------------|----------------|
+| Entries | ≤ 1000 | 1000+ |
+| Access pattern | Lookup by key | Independent state |
+| Gas per operation | Grows with size | Constant |
+| Storage fee | One contract | Distributed |
+| Enumeration | On-chain iteration | Off-chain indexer |
+
+<Callout type="warning">
+**Rule of Thumb: Dict ≤ 1000, Contracts > 1000**
+
+Dictionaries с > 1000 entries становятся дорогими (gas + storage fee). Для > 1000 entities — используйте sharded child contracts (Jetton/NFT pattern). Для < 100 — inline data без dict.
+</Callout>
+
+<KnowledgeCheck>
+HashmapE — Patricia Trie в cells. Gas пропорционально depth (= key length). Для System Design: bounded dicts (≤1000), sharding для > 1000 entries, inline для ≤ 4 entries. Оптимизация: tight packing, lazy deletion, off-chain index + Merkle proofs.
+</KnowledgeCheck>

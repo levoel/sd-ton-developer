@@ -1,0 +1,35 @@
+{
+  "lessonSlug": "11-security/01-security-upgradability",
+  "moduleId": "11-security",
+  "_meta": {
+    "idPrefix": "sdton-m11-01"
+  },
+  "questions": [
+    {
+      "id": "sdton-m11-01-q1",
+      "type": "multiple-choice",
+      "question": "Контракт обновляется через set_code(). Как защитить пользователей от malicious upgrade?",
+      "options": [
+        {
+          "id": "a",
+          "text": "set_code() невозможно — контракты immutable"
+        },
+        {
+          "id": "b",
+          "text": "Timelock: propose upgrade → 48h waiting period (users can exit) → execute. Multi-sig admin (3-of-5) для дополнительной protection"
+        },
+        {
+          "id": "c",
+          "text": "Users не нуждаются в защите — admin всегда trust-worthy"
+        },
+        {
+          "id": "d",
+          "text": "Запретить set_code() в контракте"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Timelock + multi-sig: 1) Admin proposes new code. 2) 48h waiting period — users see proposed changes, can withdraw funds if disagree. 3) After timelock, multi-sig (3-of-5 signers) executes upgrade. This gives transparency (users can inspect new code) and exit opportunity.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "lessonSlug": "06-gas-optimization/03-contract-economics",
+  "moduleId": "06-gas-optimization",
+  "_meta": {
+    "idPrefix": "sdton-m06-03"
+  },
+  "questions": [
+    {
+      "id": "sdton-m06-03-q1",
+      "type": "multiple-choice",
+      "question": "NFT коллекция с 10,000 items, без торговой активности. Monthly storage fee ~0.3 TON. Как обеспечить sustainability?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Надеяться, что кто-то пополнит баланс"
+        },
+        {
+          "id": "b",
+          "text": "Перенести все items off-chain"
+        },
+        {
+          "id": "c",
+          "text": "Storage fee бесплатна для NFT коллекций"
+        },
+        {
+          "id": "d",
+          "text": "Три варианта: 1) Royalty fee при перепродаже покрывает storage. 2) Admin top-up из treasury. 3) Self-destruct неактивных items через lazy pattern — item деплоится при покупке, уничтожается при длительной неактивности"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "NFT без trading = 0 revenue, but storage fee continues. Solutions: 1) Royalty (5% of resale) → revenue при вторичных продажах. 2) Admin treasury → ручное пополнение. 3) Lazy pattern → items exist on-chain только когда активно торгуются, уничтожаются через self-destruct при неактивности. Выбор зависит от expected trading volume.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

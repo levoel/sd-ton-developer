@@ -1,0 +1,101 @@
+{
+  "lessonSlug": "10-payment-channels/_exam",
+  "moduleId": "10-payment-channels",
+  "examTitle": "Экзамен: Payment Channels и L2",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdton-m10-exam"
+  },
+  "questions": [
+    {
+      "id": "sdton-m10-exam-q1",
+      "type": "multiple-choice",
+      "question": "Alice открыла payment channel с Bob (deposit: 100 TON each). После 500 off-chain updates Alice=30, Bob=170. Bob перестал отвечать. Как Alice закрыть канал?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Uncooperative close: Alice submits latest signed state (Alice=30, Bob=170) → challenge period → если Bob не оспорил с newer state → distribute по submitted state"
+        },
+        {
+          "id": "b",
+          "text": "Alice теряет 70 TON — Bob не кооперирует"
+        },
+        {
+          "id": "c",
+          "text": "Admin вмешивается и решает спор"
+        },
+        {
+          "id": "d",
+          "text": "Channel остаётся открытым навсегда"
+        }
+      ],
+      "correctAnswer": "a",
+      "studyHint": "Повторите урок 1: Payment Channels — Cooperative vs Uncooperative Close",
+      "explanation": "Uncooperative close: Alice submits her latest signed state on-chain. Challenge period starts (e.g., 24 hours). If Bob has newer signed state, he can submit it. After challenge period, the latest submitted state wins → funds distributed accordingly. No admin needed — trustless.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m10-exam-q2",
+      "type": "true-false",
+      "question": "TON L2 Payment Network (из 2025 roadmap) уже полностью deployed и работает в production на mainnet (март 2026).",
+      "correctAnswer": false,
+      "explanation": "По состоянию на март 2026, L2 Payment Network находится в разработке. Accelerator mainnet upgrade (2025) включает подготовительные изменения (partial lite-server, collator overlays, Tontester), но полный L2 payment network с routing ещё не launched в production.",
+      "studyHint": "Повторите урок 2: TON L2 и State Channels — текущий статус и roadmap",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "sdton-m10-exam-q3",
+      "type": "multiple-choice",
+      "question": "Payment channel между Alice и Bob. Alice хочет оплатить Charlie через Bob (multi-hop payment). Alice → Bob → Charlie. Какой механизм обеспечивает атомарность multi-hop transfer?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Доверие — Bob честный, просто перешлёт"
+        },
+        {
+          "id": "b",
+          "text": "HTLC (Hashed Timelock Contract): Charlie генерирует secret R, hash(R) передаётся Alice. Alice→Bob: locked by hash(R), timeout T1. Bob→Charlie: locked by hash(R), timeout T2 < T1. Charlie reveals R → Bob получает R → обе стороны разблокированы. Атомарность без доверия"
+        },
+        {
+          "id": "c",
+          "text": "Escrow контракт на mainnet"
+        },
+        {
+          "id": "d",
+          "text": "Multi-hop невозможен в payment channels"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите урок 1: Payment Channels — HTLC и Multi-hop Routing",
+      "explanation": "HTLC обеспечивает trustless multi-hop: secret R связывает все hops. Charlie reveals R — все промежуточные locks разблокируются. Timeout cascade (T1 > T2) предотвращает ситуацию, где Bob заплатил Charlie, но Alice не заплатила Bob. Если Charlie не reveals R до T2 — всё отменяется.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m10-exam-q4",
+      "type": "multiple-choice",
+      "question": "Микроплатёжный сервис обрабатывает 10,000 мелких платежей/день (0.01 TON каждый). Сравните: все on-chain vs payment channel. Какая экономия?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Экономии нет — gas на TON и так дешёвый"
+        },
+        {
+          "id": "b",
+          "text": "Payment channels дороже из-за deposit lock"
+        },
+        {
+          "id": "c",
+          "text": "Нужно использовать sidechain вместо payment channels"
+        },
+        {
+          "id": "d",
+          "text": "On-chain: 10K × ~0.005 TON gas ≈ 50 TON/day fees. Channel: 2 on-chain tx (open + close) ≈ 0.05 TON + 10K off-chain (бесплатно). Экономия: ~99.9% на fees. Trade-off: capital lock-up и counterparty online requirement"
+        }
+      ],
+      "correctAnswer": "d",
+      "studyHint": "Повторите урок 1: Payment Channels — Economics и Use Cases для микроплатежей",
+      "explanation": "Payment channel economics: on-chain cost = open_tx + close_tx (2 transactions total). All intermediate payments = off-chain state updates (free, instant). При 10K tx/day: on-chain = 50 TON fees vs channel = 0.05 TON. Но: нужен deposit (capital efficiency), counterparty must be online для update signing.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

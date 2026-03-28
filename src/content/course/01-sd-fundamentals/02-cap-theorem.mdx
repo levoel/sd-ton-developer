@@ -1,0 +1,219 @@
+---
+title: "CAP-теорема и распределённые системы"
+description: "Фундаментальные ограничения распределённых систем и их применение к блокчейну"
+order: 2
+difficulty: "intermediate"
+estimatedTime: 18
+topics: ["CAP Theorem", "Distributed Systems", "Consistency", "Availability", "Partition Tolerance"]
+---
+
+
+# CAP-теорема и распределённые системы
+
+## CAP-теорема: выбери два из трёх
+
+В 2000 году Eric Brewer сформулировал теорему, которая определяет фундаментальное ограничение **любой** распределённой системы:
+
+> В распределённой системе невозможно одновременно гарантировать все три свойства: **Consistency** (согласованность), **Availability** (доступность), и **Partition Tolerance** (устойчивость к разделению сети).
+
+<DiagramContainer title="CAP-теорема" className="my-6">
+  <div className="flex flex-col items-center gap-4 p-4">
+    <div className="flex items-start gap-8 flex-wrap justify-center">
+      <Tooltip content="Все узлы видят одинаковые данные в один момент времени. Каждое чтение возвращает самую последнюю запись.">
+        <DataBox label="C — Consistency" className="w-56">
+          Все узлы видят одни и те же данные одновременно
+        </DataBox>
+      </Tooltip>
+      <Tooltip content="Каждый запрос к работающему узлу получает ответ — без гарантии, что это самые свежие данные.">
+        <DataBox label="A — Availability" className="w-56">
+          Каждый запрос получает ответ (не обязательно свежий)
+        </DataBox>
+      </Tooltip>
+      <Tooltip content="Система продолжает работать даже при потере связи между узлами.">
+        <DataBox label="P — Partition Tolerance" className="w-56">
+          Система работает при сетевых разделениях
+        </DataBox>
+      </Tooltip>
+    </div>
+    <div className="text-sm text-slate-400 mt-2 text-center">
+      В реальности сетевые разделения неизбежны (P обязательна).<br/>
+      Выбор: **CP** (согласованность + устойчивость) или **AP** (доступность + устойчивость)
+    </div>
+  </div>
+</DiagramContainer>
+
+### Почему P неизбежна
+
+В реальном мире сетевые разделения (network partitions) **случаются всегда**:
+- Подводные кабели обрезаются
+- Дата-центры теряют связь
+- Роутеры падают
+
+Поэтому реальный выбор — между **CP** и **AP**:
+
+| Тип системы | Выбор | Примеры | Поведение при partition |
+|-------------|-------|---------|----------------------|
+| **CP** | Consistency + Partition Tolerance | ZooKeeper, MongoDB (strong reads) | Отказывает в обслуживании, пока не восстановится consensus |
+| **AP** | Availability + Partition Tolerance | Cassandra, DynamoDB | Продолжает работать, но данные могут быть устаревшими |
+
+## Блокчейн через призму CAP
+
+Блокчейн — это распределённая система, и CAP-теорема к нему полностью применима. Но блокчейн делает **уникальный выбор**:
+
+### Ethereum: Строгий CP
+
+Ethereum выбирает **strong consistency**: все узлы должны согласиться на одно состояние перед тем, как блок будет принят. Результат:
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Все видят одинаковые данные
+- <Icon name="alert" className="text-red-400" size="1.2em" /> Медленнее (~12 сек блок), ниже throughput
+- Если сеть разделилась — побеждает chain с большинством валидаторов
+
+### TON: Ослабленная CP с eventual consistency
+
+TON делает **более гибкий выбор**:
+
+<DiagramContainer title="TON: Consistency Model" className="my-6">
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4">
+    <Tooltip content="Внутри одного шарда транзакции строго упорядочены и согласованы">
+      <DataBox label="Intra-shard" className="border-emerald-500/30">
+        <span className="text-emerald-400 font-semibold">Strong Consistency</span>
+        <p className="text-xs text-slate-400 mt-1">Транзакции внутри шарда — строго упорядочены</p>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Между шардами — eventual consistency. Сообщения доставляются, но с задержкой">
+      <DataBox label="Cross-shard" className="border-yellow-500/30">
+        <span className="text-yellow-400 font-semibold">Eventual Consistency</span>
+        <p className="text-xs text-slate-400 mt-1">Сообщения между шардами — с задержкой</p>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Masterchain координирует все шарды — глобальный consensus каждый блок">
+      <DataBox label="Global (Masterchain)" className="border-blue-500/30">
+        <span className="text-blue-400 font-semibold">Periodic Consistency</span>
+        <p className="text-xs text-slate-400 mt-1">Masterchain фиксирует состояние каждые ~5 сек</p>
+      </DataBox>
+    </Tooltip>
+  </div>
+</DiagramContainer>
+
+<Callout type="tip">
+**Для System Design это значит:**
+
+Когда вы проектируете систему из нескольких контрактов на TON, вы должны учитывать, что контракты в разных шардах видят **разные версии состояния** в один момент времени. Операции, требующие атомарности (например, swap на DEX), нужно проектировать с учётом eventual consistency.
+</Callout>
+
+## Consensus: как достигается согласие
+
+Consensus — это протокол, по которому узлы распределённой системы договариваются о едином состоянии. Без consensus блокчейн невозможен.
+
+### BFT + PoS в TON
+
+TON использует **Byzantine Fault Tolerant (BFT)** consensus в комбинации с **Proof-of-Stake**:
+
+1. **Валидаторы** стейкают TON (~300,000 TON минимум для полного валидатора)
+2. **Collator** собирает транзакции в блок-кандидат
+3. **Validator set** голосует за блок (BFT — выдерживает до ⅓ злонамеренных валидаторов)
+4. **Блок финализируется** за ~5 секунд
+
+```
+Consensus в TON:
+
+Collator → создаёт block-candidate
+              ↓
+Validators → голосуют (BFT: 2/3 + 1 голосов достаточно)
+              ↓
+Block committed → finality (~5 сек)
+              ↓
+Masterchain → фиксирует hashes всех shardchain блоков
+```
+
+## Масштабирование: вертикальное vs горизонтальное
+
+### Вертикальное масштабирование (Scale Up)
+
+Увеличить мощность одного узла: больше RAM, быстрее CPU, SSD → NVMe.
+
+**В блокчейне:** увеличить размер блока (Bitcoin → Bitcoin Cash), увеличить gas limit. Но это **увеличивает требования к узлам** и снижает децентрализацию.
+
+### Горизонтальное масштабирование (Scale Out)
+
+Добавить больше узлов, разделить нагрузку между ними.
+
+**В блокчейне:** шардирование. TON — единственный блокчейн с **динамическим** горизонтальным масштабированием (шарды создаются и объединяются автоматически).
+
+<DiagramContainer title="Масштабирование: Scale Up vs Scale Out" className="my-6">
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4">
+    <div>
+      <h4 className="text-center text-sm font-semibold text-orange-400 mb-3">Scale Up (вертикальное)</h4>
+      <FlowColumn>
+        <Tooltip content="Один мощный узел обрабатывает все транзакции">
+          <FlowNode variant="process">
+            <div className="text-center">
+              <div className="text-lg"><Icon name="code" className="text-blue-400" size="1.2em" /></div>
+              <div className="text-xs">1 узел × max мощность</div>
+            </div>
+          </FlowNode>
+        </Tooltip>
+        <div className="text-xs text-orange-400 text-center">Потолок: hardware limits</div>
+      </FlowColumn>
+    </div>
+    <div>
+      <h4 className="text-center text-sm font-semibold text-emerald-400 mb-3">Scale Out (горизонтальное)</h4>
+      <FlowRow>
+        <Tooltip content="Каждый шард обрабатывает свою часть транзакций параллельно">
+          <FlowNode variant="process">
+            <div className="text-center">
+              <div className="text-xs">Shard 1</div>
+            </div>
+          </FlowNode>
+        </Tooltip>
+        <FlowNode variant="process">
+          <div className="text-center">
+            <div className="text-xs">Shard 2</div>
+          </div>
+        </FlowNode>
+        <FlowNode variant="process">
+          <div className="text-center">
+            <div className="text-xs">Shard N</div>
+          </div>
+        </FlowNode>
+      </FlowRow>
+      <div className="text-xs text-emerald-400 text-center mt-2">TON: шарды ∞, авто-split/merge</div>
+    </div>
+  </div>
+</DiagramContainer>
+
+## Latency vs Throughput
+
+Два ключевых performance-метрики:
+
+- **Latency** — время обработки одной операции (от отправки до подтверждения)
+- **Throughput** — количество операций в секунду (TPS)
+
+| Блокчейн | Latency (finality) | Throughput (TPS) | Approach |
+|----------|-------------------|------------------|----------|
+| Bitcoin | ~60 мин | ~7 TPS | Single chain, PoW |
+| Ethereum | ~12 сек | ~30 TPS | Single chain, PoS |
+| Solana | ~400 мс | ~4,000 TPS | Single chain, PoH |
+| **TON** | **~5 сек** | **~100,000+ TPS** | **Dynamic sharding** |
+
+<Callout type="note">
+**Почему TON быстрее Solana при большей латентности?**
+
+Solana оптимизирует **latency** (очень быстрый single chain), но throughput ограничен одним chain. TON оптимизирует **throughput** через шардирование — каждый шард обрабатывает транзакции параллельно. При росте нагрузки TON создаёт новые шарды, масштабируясь горизонтально.
+
+Для DeFi-приложений 5 секунд latency допустимы, а вот 100,000 TPS — критически важны при массовом adoption.
+</Callout>
+
+## Связь с последующими модулями
+
+Принципы из этого урока — фундамент для всего курса:
+
+| Принцип | Где применяется |
+|---------|----------------|
+| CAP и eventual consistency | M03: Actor Model — проектирование для async |
+| Шардирование | M02: TON Architecture, M04: Contract Sharding |
+| Consensus и finality | M07: DeFi Design — ordering, front-running |
+| Latency vs Throughput | M06: Gas Optimization, M10: Payment Channels |
+
+<KnowledgeCheck>
+CAP-теорема, модели согласованности, и trade-offs масштабирования — это не абстрактная теория. В следующем уроке мы разберём конкретные design patterns для распределённых систем и покажем, как каждый из них применяется к проектированию на TON.
+</KnowledgeCheck>

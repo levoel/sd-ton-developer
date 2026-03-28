@@ -1,0 +1,69 @@
+{
+  "lessonSlug": "09-mini-apps/01-mini-apps-architecture",
+  "moduleId": "09-mini-apps",
+  "_meta": {
+    "idPrefix": "sdton-m09-01"
+  },
+  "questions": [
+    {
+      "id": "sdton-m09-01-q1",
+      "type": "multiple-choice",
+      "question": "Mini App получает initData от Telegram. Где ДОЛЖНА происходить валидация initData?",
+      "options": [
+        {
+          "id": "a",
+          "text": "На frontend (JavaScript в WebView)"
+        },
+        {
+          "id": "b",
+          "text": "Валидация не нужна — Telegram гарантирует подлинность"
+        },
+        {
+          "id": "c",
+          "text": "На backend — только backend имеет bot_token для проверки HMAC-SHA256 подписи. Frontend initData может быть подделана"
+        },
+        {
+          "id": "d",
+          "text": "На smart contract (on-chain)"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "initData validation = HMAC-SHA256(bot_token, data_check_string). Bot token хранится ТОЛЬКО на backend. Frontend не имеет доступа к bot token. Без backend validation злоумышленник может подделать user_id и получить доступ к чужому аккаунту. Это #1 security vulnerability в Mini Apps.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m09-01-q2",
+      "type": "multiple-choice",
+      "question": "Game Mini App (like Notcoin) с 10M+ пользователей. Где хранить game progress (score, level, achievements)?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Полностью on-chain — каждое действие = transaction"
+        },
+        {
+          "id": "b",
+          "text": "В Telegram Cloud Storage"
+        },
+        {
+          "id": "c",
+          "text": "Только в localStorage браузера"
+        },
+        {
+          "id": "d",
+          "text": "Off-chain (backend database): game progress, scores, achievements. On-chain: только claim rewards (verified by backend signature). Off-chain для speed/free, on-chain для trustless rewards"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "Off-chain game + on-chain rewards: game logic runs on backend (free, fast, scalable). When user claims reward: backend signs reward data, user submits to smart contract, contract verifies signature → mint/transfer. Полностью on-chain (a) невозможно: 10M users × game actions = millions tx/day, massive gas costs.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m09-01-q3",
+      "type": "true-false",
+      "question": "TON Connect позволяет Mini App напрямую подписывать транзакции от имени пользователя без его подтверждения.",
+      "correctAnswer": false,
+      "explanation": "TON Connect НЕ даёт Mini App доступ к private keys. Каждая транзакция требует explicit подтверждения пользователем в wallet app (Tonkeeper, TON Space). Mini App отправляет tx request → wallet показывает details → user confirms → wallet signs → broadcast. User контролирует keys.",
+      "bloomLevel": "conceptual"
+    }
+  ]
+}

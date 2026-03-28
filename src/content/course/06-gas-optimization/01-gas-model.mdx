@@ -1,0 +1,198 @@
+---
+title: "Gas Model в TON: как формируется стоимость"
+description: "Полная модель gas fees в TON: compute, forward, storage — и как каждая влияет на архитектуру"
+order: 1
+difficulty: "intermediate"
+estimatedTime: 20
+topics: ["Gas", "Fees", "Compute", "Forward", "Storage", "Transaction Phases"]
+---
+
+# Gas Model в TON
+
+## Три типа fees
+
+В TON стоимость транзакции складывается из **трёх** независимых компонент:
+
+<DiagramContainer title="Три типа fees в TON" className="my-6">
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4">
+    <Tooltip content="Compute fee: плата за выполнение TVM инструкций. Пропорционально сложности кода.">
+      <DataBox label="Compute Fee" className="border-blue-500/30">
+        <div className="text-xs space-y-1">
+          <div>Плата за: TVM инструкции</div>
+          <div>Зависит от: сложности кода</div>
+          <div>Типично: 0.001-0.01 TON</div>
+          <div className="text-blue-400 mt-1">Одноразовая за транзакцию</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Forward fee: плата за доставку сообщения. Пропорционально размеру message (cells + bits).">
+      <DataBox label="Forward Fee" className="border-emerald-500/30">
+        <div className="text-xs space-y-1">
+          <div>Плата за: доставку сообщений</div>
+          <div>Зависит от: размера BoC</div>
+          <div>Типично: 0.001-0.005 TON</div>
+          <div className="text-emerald-400 mt-1">За каждое исходящее msg</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Storage fee: плата за хранение state. Пропорционально размеру state × времени.">
+      <DataBox label="Storage Fee" className="border-purple-500/30">
+        <div className="text-xs space-y-1">
+          <div>Плата за: хранение state</div>
+          <div>Зависит от: cells × время</div>
+          <div>Типично: 0.00036 TON/KB/год</div>
+          <div className="text-purple-400 mt-1">Постоянная (каждый блок)</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+  </div>
+</DiagramContainer>
+
+## Transaction Phases
+
+Каждая транзакция проходит 5 фаз:
+
+```
+Transaction Phases:
+
+1. Storage Phase
+   → Списать накопленный storage fee с баланса контракта
+   → Если баланс < 0 → freeze контракт
+
+2. Credit Phase
+   → Зачислить value из входящего сообщения на баланс
+
+3. Compute Phase
+   → Выполнить TVM код
+   → Списать compute fee
+   → Если gas закончился → abort
+
+4. Action Phase
+   → Отправить исходящие сообщения
+   → Списать forward fee за каждое сообщение
+
+5. Bounce Phase (если compute failed + bounce: true)
+   → Создать bounce message
+   → Вернуть оставшийся value
+```
+
+<Callout type="warning">
+**Storage Phase ПЕРВАЯ**
+
+Storage fee списывается ДО зачисления value из сообщения. Если контракт долго не получал сообщений и накопил storage debt — весь value может уйти на погашение debt, и на compute не останется.
+</Callout>
+
+## Compute Fee: формулы
+
+```
+compute_fee = gas_used × gas_price
+
+gas_price ≈ 1000 nanoton per gas unit (basechain, текущий)
+           = 0.000001 TON per gas unit
+
+Примеры:
+  Simple transfer: ~3,000 gas = ~0.003 TON
+  Jetton transfer: ~10,000 gas = ~0.01 TON  
+  DEX swap: ~30,000 gas = ~0.03 TON
+  Deploy contract: ~5,000 gas = ~0.005 TON
+```
+
+### Что стоит дорого в gas
+
+| Операция | Gas Cost | Почему дорого |
+|----------|---------|--------------|
+| Cell load | ~100 gas | Загрузка cell из storage |
+| Cell store | ~500 gas | Запись cell в storage |
+| Hash computation | ~50 gas per 256 bits | Криптография |
+| Dict get/set | ~3,000-50,000 gas | Traversal Patricia trie |
+| Message send | ~1,000 gas + forward fee | Serialization + routing |
+
+## Forward Fee: формулы
+
+```
+forward_fee = lump_price + cells × cell_price + bits × bit_price
+
+Текущие параметры (basechain):
+  lump_price = 400,000 nanoton (~0.0004 TON)
+  cell_price = 400,000 nanoton per cell
+  bit_price = 1 nanoton per bit
+
+Пример (Jetton transfer message, ~2 cells, ~700 bits):
+  forward_fee = 0.0004 + 2 × 0.0004 + 700 × 0.000000001
+  ≈ 0.0012 TON
+```
+
+## Storage Fee: формулы
+
+```
+storage_fee = cells × cell_price_per_second + bits × bit_price_per_second
+storage_fee_per_second = cells × 1 + bits × 1  (nanoton, approximate)
+
+Annual fee ≈ cells × 31.5M + bits × 31.5M  (nanoton)
+           ≈ 0.0000315 TON per cell per year
+           ≈ 0.00036 TON per KB per year
+```
+
+## Design Implications
+
+### 1. Минимизируйте outgoing messages
+
+Каждое исходящее сообщение = forward_fee. Меньше messages = дешевле:
+
+```
+[NO] 5 notifications (5 × forward_fee):
+send(user, "swap done");
+send(analytics, "swap event");
+send(admin, "swap log");
+send(treasury, "fee");
+send(referral, "bonus");
+
+[OK] 2 messages (2 × forward_fee):
+send(user, "swap done + excess");
+emit_log("swap_event");  // off-chain indexers подхватят
+// treasury fee = deducted from swap, no separate message
+// referral = batched, not per-swap
+```
+
+### 2. Рассчитайте gas budget для всей операции
+
+```
+DEX Swap Gas Budget:
+
+User → DEX Pool: external msg
+  Forward: ~0.001 TON
+
+DEX Pool compute:
+  Load state: ~500 gas
+  Verify sender: ~200 gas
+  Calculate output: ~1,000 gas
+  Update reserves: ~500 gas
+  → Compute: ~0.003 TON
+
+DEX Pool → User Jetton Wallet: internal msg
+  Forward: ~0.001 TON
+
+User Jetton Wallet compute:
+  Process transfer: ~5,000 gas
+  → Compute: ~0.005 TON
+
+Total ≈ 0.01 TON per swap
+User should send ≈ 0.05 TON (with safety margin)
+Excess returned to user
+```
+
+### 3. Gas price может меняться
+
+Network config parameters определяют gas prices. Валидаторы могут изменить через голосование:
+
+```
+[WARN] Не хардкодьте gas amounts!
+
+[NO] send(target, ton("0.05"), body);  // hardcoded
+[OK] int fee = get_forward_fee(cells, bits) + estimated_compute + MARGIN;
+   send(target, fee, body);
+```
+
+<KnowledgeCheck>
+Gas model в TON: compute (TVM instructions) + forward (message delivery) + storage (state persistence). Storage — постоянный расход, compute и forward — per-transaction. При проектировании: считайте gas budget для всей message chain, минимизируйте messages и state size, не хардкодьте gas values.
+</KnowledgeCheck>

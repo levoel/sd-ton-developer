@@ -1,0 +1,223 @@
+---
+title: "Actor Model: фундамент архитектуры TON"
+description: "Как работает actor model в TON, чем отличается от Erlang/Akka и что это значит для проектирования"
+order: 1
+difficulty: "intermediate"
+estimatedTime: 20
+topics: ["Actor Model", "Asynchronous", "Messages", "TVM", "Concurrency"]
+---
+
+# Actor Model: фундамент архитектуры TON
+
+## Что такое Actor Model
+
+Actor Model — модель вычислений, где **actor** — это базовая единица, которая:
+1. Имеет **собственное состояние** (недоступное извне)
+2. Получает и обрабатывает **сообщения** (по одному за раз)
+3. В ответ на сообщение может: изменить своё состояние, отправить сообщения другим акторам, создать новых акторов
+
+<DiagramContainer title="Actor Model: каждый контракт — независимый актор" className="my-6">
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4">
+    <Tooltip content="Actor A имеет своё изолированное состояние и обрабатывает сообщения последовательно">
+      <DataBox label="Actor A (Contract)" className="border-blue-500/30">
+        <div className="text-xs space-y-1">
+          <div className="text-blue-400">State: balance=100</div>
+          <div><Icon name="book" className="text-blue-400" size="1.2em" /> Inbox: [msg1, msg2]</div>
+          <div>Обработка: по одному</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Акторы общаются только через сообщения — прямого доступа к чужому state нет">
+      <DataBox label="Messages" className="border-yellow-500/30">
+        <div className="text-xs space-y-1">
+          <div>A → B: transfer(50)</div>
+          <div>B → A: ack(ok)</div>
+          <div>A → C: notify(event)</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Actor B полностью изолирован — A не может прочитать state B напрямую">
+      <DataBox label="Actor B (Contract)" className="border-emerald-500/30">
+        <div className="text-xs space-y-1">
+          <div className="text-emerald-400">State: balance=200</div>
+          <div><Icon name="book" className="text-blue-400" size="1.2em" /> Inbox: [msg3]</div>
+          <div>Обработка: по одному</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+  </div>
+</DiagramContainer>
+
+### Actor Model в индустрии
+
+Actor Model — не изобретение TON. Это проверенная модель из 1973 года:
+
+| Система | Реализация Actor Model |
+|---------|----------------------|
+| **Erlang/OTP** | Телекоммуникации (Ericsson, WhatsApp) |
+| **Akka** | JVM распределённые системы |
+| **Microsoft Orleans** | Cloud-native virtual actors |
+| **TON** | Блокчейн smart contracts |
+
+## TON как Actor System
+
+В TON **каждый аккаунт — actor**:
+
+```
+Аккаунт в TON:
+├── Address (256-bit unique ID)
+├── Code (TVM bytecode — логика обработки сообщений)  
+├── Data (persistent state — cells)
+├── Balance (TON coins для gas и storage)
+└── Message Queue (входящие сообщения)
+```
+
+### Правила Actor Model в TON
+
+1. **Изоляция**: Контракт A **не может** прочитать state контракта B. Только отправить сообщение и ждать ответ.
+2. **Последовательность**: Внутри одного контракта сообщения обрабатываются **строго по одному**. Нет race conditions внутри контракта.
+3. **Асинхронность**: Отправка сообщения — **fire-and-forget**. Ответ придёт в следующей транзакции.
+
+<Callout type="tip">
+**Почему Actor Model идеален для шардирования**
+
+Если каждый контракт — изолированный actor, его можно перенести в любой шард без изменения логики. Нет shared state = нет проблем с distributed locks, нет global state = нет bottleneck. Именно поэтому TON выбрал Actor Model — это **архитектурное решение для масштабирования**.
+</Callout>
+
+## Типы сообщений в TON
+
+### External Messages
+
+Входящие сообщения из **внешнего мира** (off-chain → on-chain):
+
+```
+External Message:
+Источник:    Кошелёк пользователя (off-chain)
+Назначение:  Smart contract (on-chain)
+Оплата gas:  Контракт-получатель платит из своего баланса
+Bounce:      Невозможен (нет адреса возврата)
+```
+
+### Internal Messages
+
+Сообщения **между контрактами** (on-chain → on-chain):
+
+```
+Internal Message:
+Источник:    Smart contract A
+Назначение:  Smart contract B
+Оплата gas:  Из value, приложенного к сообщению
+Bounce:      Да (если bounce: true)
+```
+
+### Log Messages
+
+Исходящие сообщения **наружу** (on-chain → off-chain):
+
+```
+Log Message:
+Источник:    Smart contract
+Назначение:  Внешние системы (indexers, dApps)
+Оплата gas:  Контракт-отправитель
+Использование: Events для off-chain подписчиков
+```
+
+<DiagramContainer title="Типы сообщений в TON" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowRow className="gap-4 justify-center">
+      <Tooltip content="External: пользователь → контракт. Gas платит контракт.">
+<FlowNode variant="input"> User Wallet</FlowNode>
+      </Tooltip>
+      <Arrow direction="right" />
+      <Tooltip content="External message попадает в inbox контракта">
+<FlowNode variant="process"> External msg</FlowNode>
+      </Tooltip>
+      <Arrow direction="right" />
+      <Tooltip content="Контракт обрабатывает external message">
+<FlowNode variant="output"> Contract A</FlowNode>
+      </Tooltip>
+    </FlowRow>
+    <FlowRow className="gap-4 justify-center">
+      <Tooltip content="Internal: контракт → контракт. Gas из приложенного value.">
+<FlowNode variant="process"> Contract A</FlowNode>
+      </Tooltip>
+      <Arrow direction="right" />
+      <Tooltip content="Internal message с value и body">
+<FlowNode variant="process"> Internal msg + TON</FlowNode>
+      </Tooltip>
+      <Arrow direction="right" />
+      <Tooltip content="Contract B обрабатывает в следующей транзакции">
+<FlowNode variant="output"> Contract B</FlowNode>
+      </Tooltip>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+## Транзакция в TON: anatomy
+
+Транзакция в TON — это **обработка одного сообщения одним контрактом**:
+
+```
+Transaction:
+1. Получить входящее сообщение (internal или external)
+2. Credit Phase: зачислить value из сообщения на баланс
+3. Compute Phase: выполнить код контракта (TVM)
+4. Action Phase: отправить исходящие сообщения
+5. Storage Phase: оплатить storage fee
+```
+
+<Callout type="warning">
+**Критично для System Design**
+
+Одна транзакция обрабатывает **одно сообщение** одним контрактом. Сложная операция (DEX swap) — это **цепочка транзакций**: каждый контракт обрабатывает своё сообщение и отправляет следующее. Проектируйте state machines, а не monolithic functions.
+</Callout>
+
+## Сравнение: TON vs Ethereum execution
+
+| Аспект | Ethereum (EVM) | TON (Actor/TVM) |
+|--------|---------------|-----------------|
+| **Вызов другого контракта** | Синхронный — результат мгновенно | Асинхронный — результат в следующем блоке |
+| **Atomicity** | Вся call chain атомарна | Только одна транзакция атомарна |
+| **Read state** | Любой контракт может читать state другого | Только через get-methods (off-chain) |
+| **Reentrancy** | Возможна (уязвимость) | Невозможна (sequential processing) |
+| **Concurrency** | Последовательно (одна EVM) | Параллельно (разные шарды) |
+| **Composability** | Высокая (DeFi Legos) | Ограниченная (async boundaries) |
+
+<Callout type="note">
+**Reentrancy невозможна на TON**
+
+Один из самых дорогих exploit-ов Ethereum ($60M DAO hack) — reentrancy attack — **невозможен** на TON. Контракт обрабатывает сообщения по одному, последовательно. Пока текущее сообщение не обработано — следующее не начнёт выполняться. Это inherent security benefit Actor Model.
+</Callout>
+
+## Implications для System Design
+
+### 1. Проектируйте State Machines
+
+Каждый контракт — это state machine, который переходит между состояниями при получении сообщений:
+
+```
+DEX Pool State Machine:
+
+State: IDLE
+  → recv(swap_request) → State: PROCESSING_SWAP
+  
+State: PROCESSING_SWAP
+  → recv(token_received) → execute swap → State: IDLE
+  → recv(timeout) → refund → State: IDLE
+  → recv(bounce) → error handling → State: IDLE
+```
+
+### 2. Планируйте message chains
+
+Сложные операции = цепочки сообщений. Планируйте **весь flow** заранее:
+- Сколько сообщений?
+- Сколько gas на каждый hop?
+- Что делать при ошибке на каждом шаге?
+
+### 3. Не полагайтесь на порядок
+
+Если контракт отправил два сообщения разным получателям — **нет гарантии**, что они обработаются в определённом порядке. Проектируйте для out-of-order delivery.
+
+<KnowledgeCheck>
+Actor Model в TON — это не абстракция, а реальный execution model. Каждое сообщение = отдельная транзакция. Изоляция state = sharding-friendly. Последовательная обработка = нет reentrancy. В следующем уроке: как проектировать message flows для сложных операций.
+</KnowledgeCheck>

@@ -1,0 +1,195 @@
+---
+title: "Архитектурные Anti-patterns на TON"
+description: "Распространённые ошибки проектирования на TON и как их избежать"
+order: 6
+difficulty: "intermediate"
+estimatedTime: 15
+topics: ["Anti-patterns", "Common Mistakes", "Best Practices", "Architecture Review"]
+---
+
+# Архитектурные Anti-patterns на TON
+
+## Anti-pattern 1: Монолитный контракт
+
+**Ошибка:** Один контракт хранит все данные и всю логику приложения.
+
+```
+[NO] Монолит:
+TokenContract:
+  - mapping: 1M пользователей → балансы
+  - все transfers → одна точка обработки
+  - storage fee за 1M записей → огромная
+
+[OK] Sharded (Jetton pattern):
+MasterContract: supply, metadata
+WalletContract_1: баланс user_1
+WalletContract_2: баланс user_2
+...
+WalletContract_N: баланс user_N
+```
+
+**Проблема:** Монолитный контракт = один шард = bottleneck. Все транзакции обрабатываются последовательно. Storage fee растёт пропорционально числу пользователей.
+
+**Решение:** Sharded pattern — данные каждого пользователя в отдельном контракте. Шарды обрабатывают их параллельно.
+
+## Anti-pattern 2: Синхронное мышление
+
+**Ошибка:** Проектировать как Ethereum — ожидать мгновенный ответ от другого контракта.
+
+```
+[NO] Синхронное мышление:
+function swap(tokenA, tokenB, amount) {
+  balance = tokenA.balanceOf(msg.sender);  // ← Это невозможно на TON!
+  tokenA.transferFrom(msg.sender, amount);  // ← Нельзя вызвать и ждать результат
+  tokenB.transfer(msg.sender, computed_amount);
+}
+
+[OK] Асинхронное:
+// Шаг 1: User → DEX: "хочу swap" + отправляет Token A
+recv_internal(msg) {
+  if (op == op::swap_request) {
+    // Сохранить pending swap в state
+    save_pending_swap(sender, amount, min_output);
+    // Отправить запрос на проверку баланса (async)
+    send(jetton_wallet, op::transfer, amount, dex_address);
+  }
+}
+
+// Шаг 2: DEX получает Token A → рассчитывает → отправляет Token B
+recv_internal(msg) {
+  if (op == op::transfer_notification) {
+    // Token A получен, рассчитать курс
+    output = calculate_output(received_amount);
+    // Отправить Token B пользователю (ещё один async message)
+    send(tokenB_wallet, op::transfer, output, user_address);
+  }
+}
+```
+
+**Проблема:** На TON нет synchronous calls. Каждое взаимодействие — async message. Попытка «вызвать и ждать» приведёт к design, который не может работать.
+
+## Anti-pattern 3: Игнорирование bounce
+
+**Ошибка:** Отправлять сообщения без обработки bounce, надеясь, что всё пройдёт.
+
+```
+[NO] Без bounce handler:
+send(recipient, value, body, mode);
+// Если recipient не существует или бросил исключение
+// → средства потеряны навсегда
+
+[OK] С bounce handler:
+send(recipient, value, body, mode | SEND_BOUNCE);
+
+recv_internal(msg) {
+  if (msg.bounced) {
+    // Обработать ошибку: вернуть средства, обновить state
+    refund(original_sender);
+  }
+}
+```
+
+**Проблема:** Без bounce handler — lost funds. Это самая дорогая ошибка на TON.
+
+## Anti-pattern 4: Unbounded storage
+
+**Ошибка:** Контракт хранит неограниченно растущие данные (логи, история, все ордера).
+
+```
+[NO] Unbounded:
+// Каждый swap добавляет запись в историю
+self.history.push(swap_record);
+// storage fee растёт → контракт "голодает" → freeze
+
+[OK] Bounded:
+// Хранить только последние N записей или агрегаты
+self.total_volume += amount;
+self.total_swaps += 1;
+// Полная история — в off-chain indexer
+```
+
+**Проблема:** Storage fee пропорционально размеру state. Unbounded growth = контракт со временем потеряет весь баланс на storage fees и будет заморожен.
+
+## Anti-pattern 5: Hardcoded gas values
+
+**Ошибка:** Жёстко закодированные значения gas forward.
+
+```
+[NO] Hardcoded:
+send(target, ton("0.05"), body, mode);
+// Что если 0.05 TON недостаточно для обработки?
+// Что если gas prices изменятся?
+
+[OK] Dynamic:
+// Рассчитать gas на основе текущих conditions
+int fwd_fee = get_forward_fee(cells, bits);
+int compute_fee = estimated_compute();
+int total = fwd_fee + compute_fee + SAFETY_MARGIN;
+send(target, total, body, mode);
+```
+
+**Проблема:** Gas prices могут меняться через network config update. Hardcoded values сломаются.
+
+## Чек-лист архитектурного ревью
+
+<DiagramContainer title="Anti-pattern Severity: Architecture Review Checklist">
+<Grid columns={2}>
+  <Tooltip content="CRITICAL — нарушение ведёт к потере средств, frozen контрактам, или полной неработоспособности. Монолитный контракт = bottleneck + unbounded storage fees. Нет шансов на исправление без redeployment">
+    <DataBox label="Critical: Sharding">
+      Контракты sharding-friendly? Нет монолитов? Данные пользователей в child contracts?
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="CRITICAL — синхронное мышление = design, который не может работать на TON. Каждое взаимодействие — async message. State machine для multi-step operations обязателен">
+    <DataBox label="Critical: Async Design">
+      Message flow корректен? State machine для multi-step? Нет sync assumptions?
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="CRITICAL — без bounce handler средства теряются навсегда. Самая дорогая ошибка на TON. Каждый send должен иметь bounce:true + recv_internal должен обрабатывать msg.bounced">
+    <DataBox label="Critical: Bounce Handling">
+      Все messages с bounce:true? Bounce handlers реализованы? Refund logic?
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="CRITICAL — только authorized senders могут менять state. Проверяйте sender address в каждом handler. Без access control: любой может drain средства или corrupt state">
+    <DataBox label="Critical: Access Control">
+      Только authorized senders? Sender validation в каждом handler?
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="HIGH — unbounded storage = контракт со временем теряет весь баланс на fees и freezes. Storage fee начисляется каждый блок. Bounded dicts + cleanup expired + self-destruct pattern">
+    <DataBox label="High: Storage Bounds">
+      State bounded? Storage fee рассчитан? Cleanup pattern реализован?
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="HIGH — hardcoded gas values сломаются при network config update. Dynamic calculation: get_forward_fee() + estimated_compute() + SAFETY_MARGIN">
+    <DataBox label="High: Gas Forward">
+      Gas forward достаточен? Не hardcoded? Dynamic calculation?
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="HIGH — без query_id нет idempotency. Replay attack: повторная отправка message = повторная обработка. query_id позволяет detect и ignore дубликаты">
+    <DataBox label="High: Replay Protection">
+      query_id для идемпотентности? Replay attacks предотвращены?
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="HIGH — integer overflow без проверки = неожиданное поведение. В FunC нет automatic overflow checks. Проверяйте manually: throw_if(ERROR, amount > MAX_AMOUNT)">
+    <DataBox label="High: Integer Overflow">
+      Overflow проверки? Explicit bounds на все arithmetic operations?
+    </DataBox>
+  </Tooltip>
+</Grid>
+</DiagramContainer>
+
+Перед деплоем системы проверьте:
+
+| Категория | Проверка | Критичность |
+|-----------|---------|-------------|
+| **Sharding** | Контракты sharding-friendly? Нет монолитов? | Critical |
+| **Async** | Message flow корректен? State machine для multi-step? | Critical |
+| **Bounce** | Все messages с bounce:true? Bounce handlers есть? | Critical |
+| **Storage** | State bounded? Storage fee рассчитан? | High |
+| **Gas** | Gas forward достаточен? Не hardcoded? | High |
+| **Replay** | query_id для идемпотентности? | High |
+| **Access** | Только authorized senders? | Critical |
+| **Overflow** | Integer overflow проверки? | High |
+
+<KnowledgeCheck>
+Эти anti-patterns стоили разработчикам миллионов долларов. Асинхронность, sharding-friendly design и bounce handling — три столпа правильной архитектуры на TON. Каждый из этих patterns будет подробно разобран в последующих модулях на конкретных примерах (DeFi, NFT, Mini Apps).
+</KnowledgeCheck>

@@ -1,0 +1,182 @@
+---
+title: "Параллельные сообщения и Fan-out/Fan-in"
+description: "Паттерны параллельной обработки: scatter-gather, fan-out, aggregation в TON"
+order: 5
+difficulty: "advanced"
+estimatedTime: 15
+topics: ["Fan-out", "Fan-in", "Parallel Messages", "Scatter-Gather", "Aggregation"]
+---
+
+# Параллельные сообщения: Fan-out / Fan-in
+
+## Fan-out: один → много
+
+Контракт отправляет **одинаковые или разные** сообщения нескольким получателям одновременно:
+
+<DiagramContainer title="Fan-out Pattern" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <div className="flex justify-center">
+      <Tooltip content="Master контракт отправляет сообщения нескольким получателям">
+<FlowNode variant="input"> Master Contract</FlowNode>
+      </Tooltip>
+    </div>
+    <FlowRow className="gap-4 justify-center">
+      <Arrow direction="down" />
+      <Arrow direction="down" />
+      <Arrow direction="down" />
+    </FlowRow>
+    <FlowRow className="gap-3 justify-center">
+      <Tooltip content="Worker 1 обрабатывает свою часть задачи">
+        <FlowNode variant="output">Worker 1</FlowNode>
+      </Tooltip>
+      <FlowNode variant="output">Worker 2</FlowNode>
+      <FlowNode variant="output">Worker N</FlowNode>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+### Use Cases
+
+| Сценарий | Описание |
+|----------|---------|
+| **Airdrop** | Master → N wallet contracts: "зачислить 100 tokens" |
+| **Notification** | Event contract → N subscriber contracts: "event happened" |
+| **Governance** | Proposal → N voter contracts: "голосуйте" |
+| **NFT minting** | Collection → N item contracts: deploy |
+
+### Design Considerations
+
+```
+Fan-out Gas Calculation:
+Total gas = N × (compute_per_worker + fwd_fee) + master_compute
+
+Пример: airdrop на 1000 wallets
+= 1000 × (0.01 TON + 0.005 TON) + 0.01 TON
+= 15.01 TON  (!)
+
+Optimization: batch sends per transaction (max ~255 messages per tx)
+```
+
+<Callout type="warning">
+**Лимит: ~255 сообщений за транзакцию**
+
+TVM ограничивает количество outbound messages в одной транзакции. Для больших fan-out (>255 получателей) нужен **chain of batch sends**: Master отправляет первые 255 + сообщение самому себе "продолжить с 256-го".
+</Callout>
+
+## Fan-in: много → один
+
+Несколько контрактов отправляют результаты одному aggregator:
+
+<DiagramContainer title="Fan-in Pattern" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowRow className="gap-3 justify-center">
+      <Tooltip content="Worker контракты отправляют результаты aggregator-у">
+        <FlowNode variant="input">Worker 1</FlowNode>
+      </Tooltip>
+      <FlowNode variant="input">Worker 2</FlowNode>
+      <FlowNode variant="input">Worker N</FlowNode>
+    </FlowRow>
+    <FlowRow className="gap-4 justify-center">
+      <Arrow direction="down" />
+      <Arrow direction="down" />
+      <Arrow direction="down" />
+    </FlowRow>
+    <div className="flex justify-center">
+      <Tooltip content="Aggregator собирает N ответов и формирует итог">
+<FlowNode variant="output"> Aggregator</FlowNode>
+      </Tooltip>
+    </div>
+  </FlowColumn>
+</DiagramContainer>
+
+### Проблема: когда все ответили?
+
+Aggregator не знает заранее, когда все workers ответят. Нужен **counter pattern**:
+
+```javascript
+// Aggregator state
+self.expected_responses = N;
+self.received_responses = 0;
+self.results = {};
+
+recv_internal(msg) {
+  if (op == op::worker_result) {
+    self.results[msg.worker_id] = msg.result;
+    self.received_responses += 1;
+    
+    if (self.received_responses == self.expected_responses) {
+      // Все ответили — финализация
+      finalize(self.results);
+      self.state = STATE_IDLE;
+    }
+  }
+}
+```
+
+### Design Problem: что если worker не ответил?
+
+```
+Timeout pattern:
+1. При fan-out сохранить deadline
+2. Если received < expected И deadline прошёл → 
+   finalize с partial results ИЛИ abort + refund
+```
+
+## Scatter-Gather: fan-out + fan-in
+
+Комбинация: отправить запросы → собрать ответы → агрегировать:
+
+```
+Scatter-Gather: Oracle Price Aggregation
+
+Master → Oracle_1: "get ETH price"
+Master → Oracle_2: "get ETH price"  
+Master → Oracle_3: "get ETH price"
+
+Oracle_1 → Master: "$2,500"
+Oracle_2 → Master: "$2,505"
+Oracle_3 → Master: "$2,498"
+
+Master: median(2500, 2505, 2498) = $2,500 → use as price
+```
+
+### Design для Scatter-Gather
+
+| Параметр | Подход |
+|----------|--------|
+| **Quorum** | Ждать 2/3 ответов (не все — один может быть offline) |
+| **Timeout** | Deadline для каждого раунда |
+| **Outlier rejection** | Отбросить ответы, отличающиеся > X% от медианы |
+| **Gas** | Master платит за все fan-out сообщения |
+
+## Practical Guidelines
+
+### 1. Минимизируйте fan-out
+
+Каждое сообщение = gas. 1000 fan-out messages = 15+ TON. Спросите: можно ли pull вместо push?
+
+```
+[NO] Push (дорого): Master → 10,000 wallets: "your balance updated"
+[OK] Pull (дёшево): Wallets → Master.get_balance(): бесплатный get-method
+```
+
+### 2. Batch processing для больших fan-out
+
+```
+Batch pattern:
+Tx 1: send messages 0-254 + self-message("continue from 255")
+Tx 2: send messages 255-509 + self-message("continue from 510")
+...
+Tx N: send messages (N-1)*255 ... last
+```
+
+### 3. Используйте counter + timeout
+
+Для fan-in всегда используйте:
+- Counter для отслеживания полноты
+- Timeout для graceful degradation
+- Partial results вместо all-or-nothing
+
+<KnowledgeCheck>
+Fan-out/fan-in — мощные паттерны для параллельной обработки на TON. Ключевые ограничения: ~255 messages per tx, gas grows linearly, no ordering guarantees across shards. Эти паттерны применяются в DeFi (multi-pool operations), governance (voting), и NFT (batch minting) — все разберём в последующих модулях.
+</KnowledgeCheck>

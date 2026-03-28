@@ -1,0 +1,148 @@
+---
+title: "Безопасность и Upgradability"
+description: "Attack vectors, security patterns, и стратегии обновления контрактов на TON"
+order: 1
+difficulty: "advanced"
+estimatedTime: 22
+topics: ["Security", "Attack Vectors", "Upgradability", "Access Control", "Audit"]
+---
+
+# Безопасность и Upgradability
+
+## Top Attack Vectors на TON
+
+<DiagramContainer title="Attack Vectors для TON контрактов" className="my-6">
+  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-4">
+    <Tooltip content="Отправка message без bounce:true → lost funds при ошибке">
+      <DataBox label="Missing Bounce" className="border-red-500/30">
+        <div className="text-xs">Lost funds при failure</div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Не проверяем sender address через deterministic verification">
+      <DataBox label="No Sender Verify" className="border-red-500/30">
+        <div className="text-xs">Fake internal messages</div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Integer overflow/underflow в balance calculations">
+      <DataBox label="Integer Overflow" className="border-red-500/30">
+        <div className="text-xs">Balance manipulation</div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Replay attack: повторная обработка одного сообщения">
+      <DataBox label="Replay Attack" className="border-orange-500/30">
+        <div className="text-xs">Double-spend via query_id</div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Gas exhaustion: недостаточно gas для завершения операции">
+      <DataBox label="Gas Exhaustion" className="border-orange-500/30">
+        <div className="text-xs">Partial state update</div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Storage drain: unbounded state growth → contract freeze">
+      <DataBox label="Storage Drain" className="border-orange-500/30">
+        <div className="text-xs">Contract freeze via storage</div>
+      </DataBox>
+    </Tooltip>
+  </div>
+</DiagramContainer>
+
+## Security Checklist
+
+### Access Control
+
+```
+Pattern: Admin + Owner verification
+
+recv_internal(msg) {
+  if (op == op::admin_action) {
+    throw_unless(401, sender == self.admin);
+    // ... admin only logic
+  }
+  
+  if (op == op::owner_action) {
+    throw_unless(401, sender == self.owner);
+    // ... owner only logic
+  }
+  
+  if (op == op::internal_transfer) {
+    // Verify sender is legitimate child contract
+    let expected = calc_child_address(claimed_owner);
+    throw_unless(401, sender == expected);
+    // ... verified child logic
+  }
+}
+```
+
+### Overflow Protection
+
+```
+// Always check before arithmetic
+throw_if(ERR_OVERFLOW, balance + amount < balance);  // overflow check
+throw_if(ERR_UNDERFLOW, balance < amount);             // underflow check
+balance += amount;  // safe after checks
+```
+
+## Upgradability Patterns
+
+### Pattern 1: Proxy (не рекомендуется на TON)
+
+```
+Proxy pattern (Ethereum-style):
+  Proxy contract → delegates to Implementation
+  Upgrade: change implementation address
+  
+[NO] На TON: не нативный, сложный, gas overhead
+```
+
+### Pattern 2: Code Migration (рекомендуется)
+
+```
+Code Migration pattern:
+  Admin отправляет новый code → контракт вызывает set_code()
+  
+  recv_internal(msg) {
+    if (op == op::upgrade_code && sender == admin) {
+      set_code(msg.new_code);
+      // Опционально: migrate data
+      set_data(migrate_data(get_data(), msg.migration_params));
+    }
+  }
+
+[OK] Нативный для TON (TVM поддерживает set_code)
+[OK] Простой
+[WARN] Admin has full control → trust assumption
+```
+
+### Pattern 3: Timelock + Governance
+
+```
+Upgrade with timelock:
+1. Admin proposes upgrade (new code + effective_date)
+2. Timelock period (48 hours) → users can exit if disagree
+3. After timelock → admin executes upgrade
+4. Emergency: shorter timelock for critical fixes
+
+On-chain governance:
+1. Token holders vote on upgrade proposal
+2. Quorum + majority → approve
+3. Timelock → execute
+```
+
+## Audit Preparation
+
+### What to audit
+
+| Priority | Check | Impact |
+|----------|-------|--------|
+| Critical | Sender verification | Fund theft |
+| Critical | Bounce handlers complete | Lost funds |
+| Critical | Overflow/underflow | Balance manipulation |
+| High | Gas forwarding sufficient | Failed operations |
+| High | Storage bounded | Contract freeze |
+| High | Admin access scoped | Unauthorized actions |
+| Medium | Replay protection | Double processing |
+| Medium | Edge cases (0 amounts, self-transfer) | Unexpected behavior |
+
+<KnowledgeCheck>
+Security на TON: verify senders (deterministic addresses), handle bounces (every message), check overflows, bound storage, and plan for upgrades. Upgradability via set_code() (native TVM) + timelock for user protection. Audit before deployment — especially for DeFi with TVL.
+</KnowledgeCheck>

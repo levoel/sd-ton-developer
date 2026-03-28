@@ -1,0 +1,43 @@
+{
+  "lessonSlug": "05-data-structures/03-tlb-schemas",
+  "moduleId": "05-data-structures",
+  "_meta": {
+    "idPrefix": "sdton-m05-03"
+  },
+  "questions": [
+    {
+      "id": "sdton-m05-03-q1",
+      "type": "multiple-choice",
+      "question": "TL-B определение: `transfer#f8a7ea5 query_id:uint64 amount:(VarUInteger 16) destination:MsgAddress = InternalMsgBody;`. Что означает `#f8a7ea5`?",
+      "options": [
+        {
+          "id": "a",
+          "text": "32-bit op code — первые 32 бита message body, по которым контракт определяет тип операции"
+        },
+        {
+          "id": "b",
+          "text": "Версия TL-B схемы"
+        },
+        {
+          "id": "c",
+          "text": "Hash адрес контракта"
+        },
+        {
+          "id": "d",
+          "text": "Минимальный gas для операции"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "#f8a7ea5 — это 32-bit op code (operation code). Контракт читает первые 32 бита message body и по op code определяет, какой handler вызвать. Конвенция TON: все internal messages начинаются с uint32 op code + uint64 query_id.",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "sdton-m05-03-q2",
+      "type": "true-false",
+      "question": "TL-B schema необязательна — можно писать контракты без неё, просто читая и записывая bits вручную.",
+      "correctAnswer": true,
+      "explanation": "Технически TL-B — это документация, не enforcement. Можно писать контракты без TL-B. НО: без формальной schema легко сделать ошибку сериализации, сложнее для других контрактов/dApps интегрироваться, невозможно автоматически генерировать bindings. TL-B — best practice, не requirement.",
+      "bloomLevel": "conceptual"
+    }
+  ]
+}

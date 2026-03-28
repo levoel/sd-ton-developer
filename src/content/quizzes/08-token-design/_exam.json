@@ -1,0 +1,101 @@
+{
+  "lessonSlug": "08-token-design/_exam",
+  "moduleId": "08-token-design",
+  "examTitle": "Экзамен: NFT и Token System Design",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdton-m08-exam"
+  },
+  "questions": [
+    {
+      "id": "sdton-m08-exam-q1",
+      "type": "multiple-choice",
+      "question": "Вы проектируете KYC SBT на TON. Issuer — KYC provider, holder — verified user. Какие 2 ключевых design requirements для SBT?",
+      "options": [
+        {
+          "id": "a",
+          "text": "1) Transfer BLOCKED (soulbound — only issuer can mint, holder can't transfer). 2) Revocation: issuer must be able to revoke expired/fraudulent KYC"
+        },
+        {
+          "id": "b",
+          "text": "Transfer должен быть разрешён для ликвидности + arbitrary minting"
+        },
+        {
+          "id": "c",
+          "text": "SBT должен быть fungible для interchangeability"
+        },
+        {
+          "id": "d",
+          "text": "KYC data должна быть полностью public on-chain"
+        }
+      ],
+      "correctAnswer": "a",
+      "studyHint": "Повторите урок 1: Token System Design — SBT Design Patterns",
+      "explanation": "SBT = soulbound: transfer заблокирован (item contract returns error on transfer). Revocation необходима: KYC может expire, issuer should be able to mark SBT as revoked/expired. KYC data should NOT be fully public — store only verified_level, country_code, expiry (minimal disclosure).",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m08-exam-q2",
+      "type": "multiple-choice",
+      "question": "DEX протокол берёт 0.3% swap fee. Как оптимально распределить fee?",
+      "options": [
+        {
+          "id": "a",
+          "text": "100% LP providers"
+        },
+        {
+          "id": "b",
+          "text": "0.25% LP providers (incentive для ликвидности) + 0.04% protocol treasury (развитие) + 0.01% referral program (привлечение)"
+        },
+        {
+          "id": "c",
+          "text": "100% protocol treasury"
+        },
+        {
+          "id": "d",
+          "text": "Fee distribution не нужна — всё в pool reserves"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите урок 1: Token Economics Design — Fee Distribution",
+      "explanation": "Balanced fee distribution: LP providers получают большую часть (incentive для предоставления ликвидности), protocol treasury получает часть (funding development, audits), referral program стимулирует привлечение пользователей. 100% LP (a) — нет funding для development. 100% treasury (c) — нет incentive для LP.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m08-exam-q3",
+      "type": "true-false",
+      "question": "Fixed supply token (supply установлена при creation, new tokens cannot be minted) всегда лучший выбор для governance токена.",
+      "correctAnswer": false,
+      "explanation": "Не всегда. Fixed supply подходит для governance (voting power фиксировано), но inflationary модель нужна для: 1) Staking rewards (инцентив для валидаторов), 2) Ecosystem grants (funding development), 3) Liquidity mining (bootstrapping DeFi). Выбор supply model зависит от protocol economics, не от типа токена.",
+      "studyHint": "Повторите урок 1: Token Economics Design — Supply Models и Governance Token Design",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m08-exam-q4",
+      "type": "multiple-choice",
+      "question": "NFT marketplace на TON. Коллекция 10,000 items. Buyer отправляет TON в NFT item contract для покупки. Какой критический security check должен item contract выполнить при transfer?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Проверить баланс buyer off-chain через API"
+        },
+        {
+          "id": "b",
+          "text": "Дождаться confirmation от Collection Master"
+        },
+        {
+          "id": "c",
+          "text": "Verify: 1) msg_value >= sale_price + gas_fees. 2) Sender == current_owner || sender == approved_marketplace. 3) Update owner → buyer, clear approvals, forward excess TON to seller. Reject if any check fails"
+        },
+        {
+          "id": "d",
+          "text": "Достаточно проверить msg_value — ownership transfer автоматический"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите урок 2: NFT System Design — Safe Transfer Checklist",
+      "explanation": "Three checks: 1) Sufficient funds (sale price + gas for forwarding). 2) Authorization (only owner or pre-approved marketplace can initiate transfer). 3) State update (new owner, clear approvals to prevent re-sale exploit). Without clearing approvals, old marketplace approval persists → unauthorized re-transfer possible.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

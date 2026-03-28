@@ -1,0 +1,176 @@
+---
+title: "NFT Collection Pattern и Factory Contracts"
+description: "Паттерны шардированных NFT коллекций и фабрик контрактов на TON"
+order: 3
+difficulty: "advanced"
+estimatedTime: 18
+topics: ["NFT", "Collection Pattern", "Factory", "SBT", "Contract Deployment"]
+---
+
+# NFT Collection Pattern и Factory Contracts
+
+## NFT на TON: Collection + Item
+
+NFT на TON используют тот же sharded pattern, что и Jetton:
+
+<DiagramContainer title="NFT Collection Architecture" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <div className="flex justify-center">
+      <Tooltip content="Collection хранит metadata коллекции, next_item_index, и код для deploy Item">
+        <DataBox label="NFT Collection (Master)" className="border-purple-500/30 w-64">
+          <div className="text-xs space-y-1">
+            <div>name: "Cool Cats"</div>
+            <div>next_item_index: 10,000</div>
+            <div>owner: creator_address</div>
+            <div>item_code: bytecode</div>
+            <div>royalty: 5%</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+    </div>
+    <FlowRow className="gap-2 justify-center">
+      <Arrow direction="down" />
+      <Arrow direction="down" />
+      <Arrow direction="down" />
+    </FlowRow>
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <Tooltip content="Каждый NFT — отдельный контракт с owner и metadata URL">
+        <DataBox label="Item #0" className="border-orange-500/30 w-32">
+          <div className="text-xs">
+            <div>owner: Alice</div>
+            <div>content: ipfs://...</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+      <DataBox label="Item #1" className="border-orange-500/30 w-32">
+        <div className="text-xs">
+          <div>owner: Bob</div>
+          <div>content: ipfs://...</div>
+        </div>
+      </DataBox>
+      <DataBox label="Item #9999" className="border-orange-500/30 w-32">
+        <div className="text-xs">
+          <div>owner: Carol</div>
+          <div>content: ipfs://...</div>
+        </div>
+      </DataBox>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+### Сравнение: ERC-721 vs TON NFT
+
+| Аспект | ERC-721 (Ethereum) | TON NFT |
+|--------|-------------------|---------|
+| Storage | Все tokenID→owner в одном контракте | Каждый Item = отдельный контракт |
+| Transfer | Один вызов `transferFrom()` | 2-3 сообщения (async) |
+| Enumeration | `tokenOfOwnerByIndex()` — on-chain | Off-chain indexer (Tonscan) |
+| Royalty | ERC-2981 (необязательно) | Встроено в Collection |
+| Scalability | Ограничено одним контрактом | Каждый Item в своём шарде |
+
+## Factory Pattern
+
+Factory Contract — контракт, который **деплоит другие контракты**. Collection — это factory для Items.
+
+### Общий Factory Pattern
+
+```javascript
+// Factory Contract
+recv_internal(msg) {
+  if (op == op::create_child) {
+    // 1. Подготовить initial data для child
+    let init_data = pack_child_data(msg.params);
+    
+    // 2. Вычислить state_init (code + data)
+    let state_init = pack_state_init(child_code, init_data);
+    
+    // 3. Вычислить адрес child (deterministic!)
+    let child_address = calc_address(state_init);
+    
+    // 4. Отправить deploy message
+    send(child_address, gas, body, state_init);
+    
+    // 5. Обновить registry (если нужно)
+    self.child_count += 1;
+  }
+}
+```
+
+### Use Cases для Factory Pattern
+
+| Factory | Child | Пример |
+|---------|-------|--------|
+| Jetton Master | Jetton Wallet | Первое получение токена → deploy wallet |
+| NFT Collection | NFT Item | Mint → deploy item |
+| DEX Router | Liquidity Pool | Создание пары → deploy pool |
+| Lending Market | User Position | Первый deposit → deploy position |
+| Multisig Factory | Multisig Wallet | Создание кошелька → deploy multisig |
+
+## SBT (Soulbound Token)
+
+SBT — не-передаваемый токен (Soulbound). Та же архитектура Collection + Item, но transfer **запрещён**:
+
+```
+SBT vs NFT:
+├── Deploy: одинаковый (Collection → Item)
+├── Ownership: одинаковый (Item.owner)
+├── Transfer: [NO] ЗАПРЕЩЁН для SBT
+├── Burn: [OK] только owner может burn
+└── Use case: сертификаты, репутация, KYC-токены
+```
+
+### Design Insight
+
+SBT — пример, как один паттерн (Collection + Item) адаптируется для разных use cases просто изменением transfer policy. Код item-контракта одинаковый, но `transfer` handler в SBT возвращает ошибку.
+
+## Batch Minting: массовый deploy
+
+Минтинг 10,000 NFT за одну транзакцию невозможен (~255 messages limit). Используйте chain of batches:
+
+```
+Batch Minting Pattern:
+
+Tx 1: Collection deploys Items #0-254 + self-msg("continue from 255")
+Tx 2: Collection deploys Items #255-509 + self-msg("continue from 510")
+...
+Tx 40: Collection deploys Items #9745-9999
+
+Total: ~40 транзакций для 10,000 NFT
+Gas: ~40 × 255 × deploy_cost ≈ 100+ TON
+```
+
+<Callout type="warning">
+**Batch mint = дорого**
+
+10,000 NFT mint = ~100+ TON в gas. Альтернатива: **lazy minting** — Item деплоится только при первом claim/purchase, не при создании коллекции. Экономит gas creator-у, переносит cost на buyer-а.
+</Callout>
+
+## Design Patterns Summary
+
+<DiagramContainer title="Sharding Patterns на TON" className="my-6">
+  <Grid columns={3} className="p-4 gap-2">
+    <DataBox label="Pattern" className="font-semibold">Описание</DataBox>
+    <DataBox label="Когда" className="font-semibold">Use Case</DataBox>
+    <DataBox label="Примеры" className="font-semibold">На TON</DataBox>
+
+    <DataBox label="Master-Child">State per user/entity</DataBox>
+    <DataBox>1000+ пользователей, individual state</DataBox>
+    <DataBox>Jetton, NFT, Staking</DataBox>
+
+    <DataBox label="Factory">Deploy children on demand</DataBox>
+    <DataBox>Dynamic creation of contracts</DataBox>
+    <DataBox>DEX pools, NFT mint</DataBox>
+
+    <DataBox label="Lazy Deploy">Deploy при первом использовании</DataBox>
+    <DataBox>Неизвестное число future users</DataBox>
+    <DataBox>Jetton wallet, lazy NFT</DataBox>
+
+    <DataBox label="Registry">Master хранит index children</DataBox>
+    <DataBox>Enumeration нужна on-chain</DataBox>
+    <DataBox>NFT Collection.next_item_index</DataBox>
+  </Grid>
+</DiagramContainer>
+
+<KnowledgeCheck>
+NFT Collection и Factory patterns — это шаблоны для любого sharded state. Jetton (per-user balance), NFT (per-item ownership), SBT (per-user credential) — все используют одну архитектуру Master+Child. В следующем уроке: deterministic addresses и как вычислять адреса контрактов до deployment.
+</KnowledgeCheck>

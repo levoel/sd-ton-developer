@@ -1,0 +1,181 @@
+---
+title: "State Machines для TON контрактов"
+description: "Проектирование контрактов как state machines для надёжной обработки multi-step операций"
+order: 4
+difficulty: "advanced"
+estimatedTime: 18
+topics: ["State Machine", "Multi-step Operations", "State Transitions", "Design Pattern"]
+---
+
+# State Machines для TON контрактов
+
+## Зачем State Machine
+
+В синхронном коде multi-step операция — это функция с последовательными вызовами. В TON каждый шаг — отдельная транзакция. Между шагами контракт должен **помнить**, на каком этапе находится.
+
+State Machine — формальный способ описать это:
+
+<DiagramContainer title="State Machine: DEX Swap" className="my-6">
+  <FlowColumn className="p-4 gap-1">
+    <FlowRow className="gap-2 justify-center flex-wrap">
+      <Tooltip content="Начальное состояние: контракт ожидает запрос на swap">
+        <DataBox label="IDLE" className="border-slate-500/30 w-32 text-center">
+          <div className="text-xs">Ожидание</div>
+        </DataBox>
+      </Tooltip>
+      <Arrow direction="right" />
+      <Tooltip content="Получен запрос, ждём получение Token A">
+        <DataBox label="AWAITING_TOKEN" className="border-yellow-500/30 w-40 text-center">
+          <div className="text-xs">Ждём Token A</div>
+        </DataBox>
+      </Tooltip>
+      <Arrow direction="right" />
+      <Tooltip content="Token A получен, рассчитываем курс и отправляем Token B">
+        <DataBox label="EXECUTING" className="border-blue-500/30 w-32 text-center">
+          <div className="text-xs">Swap в процессе</div>
+        </DataBox>
+      </Tooltip>
+      <Arrow direction="right" />
+      <Tooltip content="Swap завершён, возвращаемся в IDLE">
+        <DataBox label="COMPLETED" className="border-emerald-500/30 w-32 text-center">
+          <div className="text-xs">Готово → IDLE</div>
+        </DataBox>
+      </Tooltip>
+    </FlowRow>
+    <div className="text-xs text-center text-red-400 mt-3">
+      Из любого состояния: bounce → REFUNDING → IDLE
+    </div>
+  </FlowColumn>
+</DiagramContainer>
+
+## Реализация State Machine
+
+```javascript
+// Состояния контракта
+const STATE_IDLE = 0;
+const STATE_AWAITING_TOKEN = 1;
+const STATE_EXECUTING = 2;
+const STATE_REFUNDING = 3;
+
+// State в persistent storage
+self.state = STATE_IDLE;
+self.pending_swap = null;
+
+recv_internal(msg) {
+  // Bounce handler (из любого state)
+  if (msg.bounced) {
+    handle_bounce(msg);
+    return;
+  }
+  
+  // State-dependent message handling
+  switch (self.state) {
+    case STATE_IDLE:
+      if (op == op::swap_request) {
+        self.pending_swap = {sender, amount, min_output, deadline};
+        self.state = STATE_AWAITING_TOKEN;
+        // Send transfer request to sender's Jetton wallet
+        send(sender_wallet, gas, transfer_msg);
+      }
+      break;
+      
+    case STATE_AWAITING_TOKEN:
+      if (op == op::transfer_notification) {
+        // Token received, execute swap
+        let output = calculate_output(received_amount);
+        if (output < self.pending_swap.min_output) {
+          // Slippage exceeded — refund
+          self.state = STATE_REFUNDING;
+          send(sender_wallet, gas, refund_msg);
+        } else {
+          self.state = STATE_EXECUTING;
+          send(output_wallet, gas, transfer_output_msg);
+        }
+      }
+      if (op == op::timeout) {
+        // Deadline passed — refund
+        self.state = STATE_REFUNDING;
+        send(sender_wallet, gas, refund_msg);
+      }
+      break;
+      
+    case STATE_EXECUTING:
+      if (op == op::transfer_notification) {
+        // Output sent successfully
+        self.state = STATE_IDLE;
+        self.pending_swap = null;
+      }
+      break;
+      
+    case STATE_REFUNDING:
+      if (op == op::transfer_notification) {
+        // Refund complete
+        self.state = STATE_IDLE;
+        self.pending_swap = null;
+      }
+      break;
+  }
+}
+```
+
+## Design Rules для State Machines
+
+### Rule 1: Явные состояния
+
+Каждое состояние — **exactly one enum value** в storage. Не полагайтесь на implicit state (наличие/отсутствие данных).
+
+### Rule 2: Все transitions документированы
+
+```
+Transition Table:
+IDLE + swap_request → AWAITING_TOKEN
+AWAITING_TOKEN + transfer_notification → EXECUTING
+AWAITING_TOKEN + timeout → REFUNDING
+AWAITING_TOKEN + bounce → REFUNDING
+EXECUTING + transfer_notification → IDLE (complete)
+EXECUTING + bounce → REFUNDING
+REFUNDING + transfer_notification → IDLE (refunded)
+```
+
+### Rule 3: Timeouts для каждого pending state
+
+Любое pending state должно иметь **deadline**. Если ответ не пришёл за N блоков — timeout → compensation.
+
+### Rule 4: Bounce из любого state
+
+Bounce handler должен работать **из любого** состояния:
+
+```javascript
+handle_bounce(msg) {
+  if (self.state == STATE_AWAITING_TOKEN || 
+      self.state == STATE_EXECUTING) {
+    self.state = STATE_REFUNDING;
+    // Вернуть средства original sender
+    refund(self.pending_swap.sender, self.pending_swap.amount);
+  }
+}
+```
+
+## Anti-pattern: Implicit State
+
+```
+[NO] Implicit state (опасно):
+if (self.pending_amount > 0 && self.pending_sender != null) {
+  // "видимо, мы ждём token"
+}
+
+[OK] Explicit state (безопасно):
+if (self.state == STATE_AWAITING_TOKEN) {
+  // Точно знаем, что ждём token
+}
+```
+
+<Callout type="tip">
+**Tip: рисуйте state diagram перед кодом**
+
+Для каждого контракта нарисуйте state diagram со всеми transitions. Включите bounce и timeout transitions. Если diagram выглядит сложно — возможно, контракт делает слишком много и нужно разделить на несколько.
+</Callout>
+
+<KnowledgeCheck>
+State machines — единственный надёжный способ управлять multi-step операциями на TON. Explicit states, documented transitions, timeouts и bounce handling — четыре столпа. В следующем уроке: parallel message patterns и fan-out/fan-in design.
+</KnowledgeCheck>

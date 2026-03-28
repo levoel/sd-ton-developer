@@ -1,0 +1,169 @@
+---
+title: "Trade-off Analysis и архитектурные решения"
+description: "Как документировать, анализировать и обосновывать trade-offs при проектировании систем на TON"
+order: 4
+difficulty: "intermediate"
+estimatedTime: 15
+topics: ["Trade-offs", "Architecture Decision Records", "Evaluation Criteria"]
+---
+
+
+# Trade-off Analysis и архитектурные решения
+
+## Нет правильных ответов — есть обоснованные решения
+
+Главный навык System Design — не знание «правильного» решения, а умение **анализировать trade-offs** и выбирать подход, оптимальный для конкретных ограничений.
+
+Каждое архитектурное решение — это компромисс:
+
+| Хотим больше | Жертвуем |
+|-------------|----------|
+| Децентрализации | Скоростью и throughput |
+| Безопасности | Гибкостью и upgradability |
+| Производительности | Стоимостью газа |
+| Простоты контракта | Функциональностью |
+| Масштабируемости | Атомарностью операций |
+
+## Framework для анализа trade-offs
+
+### 1. Определить критерии оценки
+
+Для каждого решения определите, что важно:
+
+<DiagramContainer title="Критерии оценки архитектуры" className="my-6">
+  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-4">
+    <Tooltip content="Стоимость выполнения операций в gas. Для DeFi — критично, для governance — менее важно">
+      <DataBox label="Gas Cost" className="text-center">
+        Стоимость операций
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Время от отправки транзакции до финализации. Для Mini Apps — важно, для staking — нет">
+      <DataBox label="Latency" className="text-center">
+        Время отклика
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Защита от атак, reentrancy, overflow, access control">
+      <DataBox label="Security" className="text-center">
+        Устойчивость к атакам
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Можно ли обновить контракт без потери данных и средств?">
+      <DataBox label="Upgradability" className="text-center">
+        Возможность обновления
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Насколько легко добавить новые фичи или изменить поведение?">
+      <DataBox label="Extensibility" className="text-center">
+        Расширяемость
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Работает ли система при росте нагрузки в 10x, 100x?">
+      <DataBox label="Scalability" className="text-center">
+        Масштабируемость
+      </DataBox>
+    </Tooltip>
+  </div>
+</DiagramContainer>
+
+### 2. Оценить варианты
+
+Для каждого варианта оцените по критериям (1-5):
+
+| Критерий | Вариант A: Монолит | Вариант B: Sharded |
+|----------|-------------------|-------------------|
+| Gas Cost | 4/5 (один контракт) | 2/5 (сообщения между контрактами) |
+| Latency | 5/5 (без cross-shard) | 3/5 (cross-shard messages) |
+| Security | 3/5 (один attack surface) | 4/5 (изоляция) |
+| Scalability | 2/5 (один шард) | 5/5 (шарды параллельно) |
+
+### 3. Документировать решение (ADR)
+
+**Architecture Decision Record (ADR)** — стандартный формат документирования:
+
+```markdown
+## ADR-001: Sharded vs Monolithic Token Contract
+
+**Status:** Accepted
+**Context:** Проектируем Jetton с ожидаемым числом холдеров 1M+
+**Decision:** Sharded pattern (master + wallet contracts)
+**Consequences:**
+  - [OK] Масштабируется до любого числа холдеров
+  - [OK] Параллельная обработка transfer в разных шардах
+  - [NO] Transfer = 3 сообщения вместо 1 (дороже в gas)
+  - [NO] Balance не атомарен — возможны временные несоответствия
+```
+
+## Пример: Проектирование DEX — trade-off analysis
+
+Задача: спроектировать DEX на TON. Два основных подхода:
+
+<DiagramContainer title="Trade-off: AMM vs Orderbook DEX" className="my-6">
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
+    <Tooltip content="AMM (Automated Market Maker) использует формулу x*y=k для определения цены. Простой, но с impermanent loss.">
+      <DataBox label="AMM (STON.fi, DeDust)" className="border-blue-500/30">
+        <div className="space-y-1 text-xs">
+          <div className="text-emerald-400"><Icon name="check" className="text-emerald-400" size="1.2em" /> Простой контракт</div>
+          <div className="text-emerald-400"><Icon name="check" className="text-emerald-400" size="1.2em" /> Всегда ликвидность</div>
+          <div className="text-emerald-400"><Icon name="check" className="text-emerald-400" size="1.2em" /> Мало сообщений</div>
+          <div className="text-red-400"><Icon name="alert" className="text-red-400" size="1.2em" /> Impermanent loss</div>
+          <div className="text-red-400"><Icon name="alert" className="text-red-400" size="1.2em" /> Проскальзывание</div>
+          <div className="text-red-400"><Icon name="alert" className="text-red-400" size="1.2em" /> Нет лимитных ордеров</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Orderbook хранит ордера и матчит их. Сложнее, но с точным ценообразованием.">
+      <DataBox label="Orderbook" className="border-purple-500/30">
+        <div className="space-y-1 text-xs">
+          <div className="text-emerald-400"><Icon name="check" className="text-emerald-400" size="1.2em" /> Точные цены</div>
+          <div className="text-emerald-400"><Icon name="check" className="text-emerald-400" size="1.2em" /> Лимитные ордера</div>
+          <div className="text-emerald-400"><Icon name="check" className="text-emerald-400" size="1.2em" /> Нет impermanent loss</div>
+          <div className="text-red-400"><Icon name="alert" className="text-red-400" size="1.2em" /> Сложная архитектура</div>
+          <div className="text-red-400"><Icon name="alert" className="text-red-400" size="1.2em" /> Нужна ликвидность</div>
+          <div className="text-red-400"><Icon name="alert" className="text-red-400" size="1.2em" /> Дорого в gas (хранение ордеров)</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+  </div>
+</DiagramContainer>
+
+### Почему TON DEX-ы выбирают AMM
+
+1. **Gas cost**: Хранение orderbook на блокчейне — дорого (storage fee за каждый ордер)
+2. **Асинхронность**: Матчинг ордеров в async среде — сложно гарантировать fairness
+3. **Простота**: AMM = один контракт с формулой `x * y = k`, orderbook = десятки контрактов
+4. **UX**: AMM swap — одна транзакция, orderbook — создание ордера + ожидание матчинга
+
+<Callout type="tip">
+**Правильный ответ зависит от контекста**
+
+Для low-frequency trading на дорогих активах — orderbook лучше (точные цены). Для массовых мелких swap-ов — AMM (простота и скорость). В модуле M07 мы детально разберём архитектуру обоих подходов.
+</Callout>
+
+## Антипаттерны при принятии решений
+
+### <Icon name="alert" className="text-red-400" size="1.2em" /> Resume-Driven Development
+Выбирать технологию, потому что она красиво смотрится в резюме, а не потому что подходит для задачи.
+
+### <Icon name="alert" className="text-red-400" size="1.2em" /> Premature Optimization
+Оптимизировать gas для контракта с 10 пользователями, вместо того чтобы сфокусироваться на корректности.
+
+### <Icon name="alert" className="text-red-400" size="1.2em" /> One-Size-Fits-All
+Использовать один паттерн (например, sharded) для всех контрактов, независимо от требований.
+
+### <Icon name="alert" className="text-red-400" size="1.2em" /> Copy-Paste Architecture
+Копировать архитектуру STON.fi для своего DEX без анализа — ваши требования могут отличаться.
+
+## Чек-лист для каждого архитектурного решения
+
+Перед фиксацией решения проверьте:
+
+- [ ] Определены ли критерии оценки (что важно для этой конкретной системы)?
+- [ ] Рассмотрены ли минимум 2 альтернативы?
+- [ ] Документированы ли trade-offs каждого варианта?
+- [ ] Учтены ли специфики TON (async, sharding, storage fees)?
+- [ ] Есть ли план отступления, если решение окажется неверным?
+- [ ] Записан ли ADR?
+
+<KnowledgeCheck>
+Trade-off analysis — это не одноразовое упражнение. В реальных проектах решения пересматриваются по мере поступления новой информации. Важно не только принять правильное решение, но и задокументировать **почему** оно было принято — чтобы будущие разработчики понимали контекст.
+</KnowledgeCheck>

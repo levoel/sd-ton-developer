@@ -1,0 +1,193 @@
+---
+title: "Storage Optimization и Data Layout"
+description: "Практические техники оптимизации хранения данных в TON контрактах"
+order: 5
+difficulty: "advanced"
+estimatedTime: 15
+topics: ["Storage Optimization", "Data Layout", "Gas Optimization", "Cell Packing"]
+---
+
+# Storage Optimization и Data Layout
+
+## Почему это важно
+
+Storage fee — **постоянный расход**. В отличие от gas (платится один раз при транзакции), storage fee начисляется **каждый блок** за весь хранимый state. Оптимизация storage = постоянная экономия.
+
+```
+Экономия на storage:
+Экономия 1 cell = ~0.000004 TON/год
+Экономия 100 cells = ~0.0004 TON/год
+Экономия 10,000 cells = ~0.04 TON/год
+
+Для контракта с 100K users × 10 cells = 1M cells:
+  Before optimization: ~4 TON/год
+  After (-30% cells): ~2.8 TON/год
+  Savings: 1.2 TON/год
+```
+
+## Technique 1: Bit Packing
+
+<DiagramContainer title="Storage Optimization Techniques Comparison">
+<Grid columns={3}>
+  <Tooltip content="Bit Packing — упаковка нескольких значений в минимум bits. uint256 для boolean = 255 wasted bits. uint1 для boolean = 0 waste. Экономия: 760 bits (3 cells → 1 cell) в типичном примере">
+    <DataBox label="Bit Packing">
+      Pack fields: uint3 + uint4 + bit = 8 bits instead of 768. Save 99% bits
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="Optional Fields (Maybe) — 1 bit overhead если поле отсутствует вместо полного размера. Для 1000 users без referral: 1 bit × 1000 вместо 268 bits × 1000 = ~267K bits saved">
+    <DataBox label="Optional Fields (Maybe)">
+      1 bit if absent vs 268 bits if present. ~300 bits saved per optional field
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="Cleanup Expired — удаление устаревших данных при каждой транзакции. Gas-bounded batch (10-50 entries per tx). Prevents unbounded growth → prevents contract freeze от storage fees">
+    <DataBox label="Cleanup Expired">
+      Gas-bounded: delete 10-50 expired entries per tx. Prevent freeze
+    </DataBox>
+  </Tooltip>
+</Grid>
+<FlowRow>
+  <Tooltip content="Shared Code References — TON автоматически дедуплицирует cells с одинаковым hash. 1000 child contracts с одинаковым code = 1 × code_size storage, НЕ 1000 ×">
+    <FlowNode label="Shared Code Refs (auto-dedup)" />
+  </Tooltip>
+  <Arrow direction="right" />
+  <Tooltip content="State Layout Design — систематический подход: list fields → sort by frequency → pack root cell (1023 bits) → overflow to refs (max 4). Рассчитайте annual fee ДО deployment">
+    <FlowNode label="State Layout Planning" />
+  </Tooltip>
+  <Arrow direction="right" />
+  <Tooltip content="Self-Destruct Pattern — для temporary contracts (escrow, auction). MODE_CARRY_ALL_REMAINING + MODE_DESTROY_IF_ZERO. Контракт уничтожен → 0 storage fee навсегда">
+    <FlowNode label="Self-Destruct (0 fee)" />
+  </Tooltip>
+</FlowRow>
+</DiagramContainer>
+
+Упаковывайте несколько значений в минимум bits:
+
+```
+[NO] Wasteful (3 cells):
+Cell 1: status: uint256 = 3        // 256 bits для значения 0-5
+Cell 2: plan_id: uint256 = 2       // 256 bits для значения 0-10  
+Cell 3: is_active: uint256 = 1     // 256 bits для boolean
+
+Total: 768 bits, 3 references
+
+[OK] Packed (1 cell):
+Cell 1:
+  status: uint3 = 3       // 3 bits
+  plan_id: uint4 = 2      // 4 bits
+  is_active: bit = 1      // 1 bit
+  
+Total: 8 bits, 0 references
+Savings: 760 bits, 3 cells → 1 cell
+```
+
+## Technique 2: Optional Fields
+
+Используйте `Maybe` для полей, которые часто пустые:
+
+```
+// TL-B с Maybe
+user_data#_ 
+  balance:Grams 
+  locked_until:(Maybe uint32)     // 1 bit if absent, 33 bits if present
+  referral:(Maybe MsgAddress)     // 1 bit if absent, 268 bits if present
+  = UserData;
+
+// Для user БЕЗ lock и referral:
+  balance + 1 bit (no lock) + 1 bit (no referral) = ~126 bits
+
+// Для user С lock и referral:
+  balance + 33 bits + 268 bits = ~427 bits
+
+Savings: users без optional fields экономят ~300 bits each
+```
+
+## Technique 3: Shared Code References
+
+В sharded design все child contracts имеют одинаковый code. TON **дедуплицирует** code cells:
+
+```
+1000 child contracts с одинаковым code:
+  Storage: 1 × code_size + 1000 × data_size
+  НЕ: 1000 × (code_size + data_size)
+
+TON автоматически sharing-ает cells с одинаковым hash!
+```
+
+## Technique 4: Cleanup Expired Data
+
+Удаляйте данные, которые больше не нужны:
+
+```javascript
+// При каждой транзакции — cleanup
+recv_internal(msg) {
+  // Cleanup expired entries
+  if (now() > self.next_cleanup) {
+    let deleted = cleanup_expired(self.dict, 10); // max 10 per tx
+    self.next_cleanup = now() + 3600; // next cleanup in 1 hour
+  }
+  
+  // Normal processing...
+}
+```
+
+<Callout type="warning">
+**Gas-bounded cleanup**
+
+Не удаляйте все expired entries за одну транзакцию — может не хватить gas. Удаляйте **bounded batch** (10-50 entries per tx). Spread cleanup across multiple transactions.
+</Callout>
+
+## Technique 5: State Layout Reference Card
+
+Шаблон для проектирования state layout:
+
+```
+Contract State Layout Design:
+
+1. List all fields with types and bit sizes
+2. Sort by frequency of access (most accessed first)
+3. Pack into root cell (up to 1023 bits)
+4. Overflow → references (up to 4)
+5. Large/optional data → ref cells
+6. Collections → HashmapE (≤1000) or child contracts (>1000)
+7. Calculate total cells and annual storage fee
+
+Template:
+Root Cell [used: ??? / 1023 bits, refs: ? / 4]:
+  ├── field_1: type (N bits) — always present
+  ├── field_2: type (N bits) — always present
+  ├── field_3: Maybe type (1+N bits) — optional
+  └── Refs:
+      ├── Ref 0 → data_cell [used: ??? / 1023 bits]
+      ├── Ref 1 → dict_cell [HashmapE, ~K entries]
+      └── Ref 2 → code_cell [immutable]
+
+Storage estimate:
+  cells_count: ???
+  annual_fee: ??? TON
+  min_balance: ??? TON (cover 1 year fees)
+```
+
+## Complete Example: Optimized Staking Position
+
+```
+Staking Position Contract — State Layout:
+
+Root Cell [892 / 1023 bits, 1 ref]:
+  ├── owner: MsgAddress (267 bits)
+  ├── pool_master: MsgAddress (267 bits)
+  ├── staked_amount: Grams (124 bits)
+  ├── reward_debt: Grams (124 bits)
+  ├── stake_time: uint32 (32 bits)
+  ├── lock_until: Maybe uint32 (1+32 = 33 bits)
+  ├── auto_compound: bit (1 bit)
+  ├── status: uint2 (2 bits) — 0:active, 1:unstaking, 2:withdrawn
+  └── Ref 0 → pool_code: Cell (for verification)
+
+Cells: 2 (root + code ref)
+Annual storage fee: ~0.000008 TON
+Min balance for 10 years: ~0.00008 TON + gas reserve
+```
+
+<KnowledgeCheck>
+Storage optimization — это discipline: bit packing, Maybe для optional, cleanup expired, bounded dicts. Рассчитывайте storage fee на этапе design, не после deployment. Rule of thumb: если annual storage fee > gas per tx — вы храните слишком много.
+</KnowledgeCheck>

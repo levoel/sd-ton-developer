@@ -1,0 +1,188 @@
+---
+title: "DEX Design: AMM Architecture Deep Dive"
+description: "Проектирование AMM DEX на TON: pool design, routing, liquidity provision, и slippage protection"
+order: 2
+difficulty: "advanced"
+estimatedTime: 22
+topics: ["AMM", "DEX", "Liquidity Pool", "Routing", "Slippage"]
+---
+
+# DEX Design: AMM Architecture
+
+## Pool Contract Design
+
+Каждый pool — **отдельный контракт** (sharded по парам):
+
+```
+Pool State:
+├── reserve_0: Grams          // Reserve token A
+├── reserve_1: Grams          // Reserve token B  
+├── total_lp_supply: Grams    // Total LP tokens minted
+├── fee_bps: uint16           // Fee in basis points (30 = 0.3%)
+├── router: MsgAddress        // Router contract address
+├── wallet_0: MsgAddress      // Pool's Jetton Wallet for token A
+├── wallet_1: MsgAddress      // Pool's Jetton Wallet for token B
+├── lp_wallet_code: ^Cell     // LP Wallet bytecode
+└── protocol_fee_bps: uint16  // Protocol fee (goes to treasury)
+```
+
+### Swap Execution
+
+```javascript
+// Simplified swap logic
+handle_swap(token_in, amount_in, min_out, sender) {
+  // 1. Identify token pair
+  let (reserve_in, reserve_out) = token_in == token_0 
+    ? (reserve_0, reserve_1) 
+    : (reserve_1, reserve_0);
+  
+  // 2. Calculate output (constant product)
+  let fee = amount_in * fee_bps / 10000;
+  let amount_in_after_fee = amount_in - fee;
+  let amount_out = reserve_out * amount_in_after_fee 
+                   / (reserve_in + amount_in_after_fee);
+  
+  // 3. Slippage check
+  if (amount_out < min_out) {
+    // REFUND — return tokens to sender
+    send_refund(sender, token_in, amount_in);
+    return;
+  }
+  
+  // 4. Update reserves
+  reserve_in += amount_in;
+  reserve_out -= amount_out;
+  
+  // 5. Send output tokens to user
+  send_tokens(sender, token_out, amount_out);
+  
+  // 6. Return excess gas
+  send_excess(sender);
+}
+```
+
+## Multi-hop Routing
+
+Если прямая пара не существует (например, STON→USDT), Router выполняет multi-hop:
+
+```
+Multi-hop: STON → USDT (через TON)
+
+Step 1: STON → TON (Pool STON/TON)
+Step 2: TON → USDT (Pool TON/USDT)
+
+Router orchestrates:
+1. User → Router: "swap STON → USDT, min_out=95"
+2. Router → Pool STON/TON: "swap STON → TON"
+3. Pool → Router: "received X TON"  
+4. Router → Pool TON/USDT: "swap X TON → USDT"
+5. Pool → User: "received Y USDT"
+6. Router verifies: Y >= min_out(95)? If not → refund chain
+```
+
+<DiagramContainer title="Multi-hop Swap: STON → TON → USDT" className="my-6">
+  <FlowRow className="p-4 gap-1 flex-wrap justify-center">
+    <Tooltip content="Пользователь отправляет STON в Router">
+<FlowNode variant="input"> User + STON</FlowNode>
+    </Tooltip>
+    <Arrow direction="right" />
+    <Tooltip content="Router определяет маршрут и передаёт в первый pool">
+      <FlowNode variant="process"><Icon name="refresh" className="text-purple-400" size="1.2em" /> Router</FlowNode>
+    </Tooltip>
+    <Arrow direction="right" />
+    <Tooltip content="Pool 1 выполняет swap STON → TON">
+      <FlowNode variant="process">Pool STON/TON</FlowNode>
+    </Tooltip>
+    <Arrow direction="right" />
+    <Tooltip content="Pool 2 выполняет swap TON → USDT">
+      <FlowNode variant="process">Pool TON/USDT</FlowNode>
+    </Tooltip>
+    <Arrow direction="right" />
+    <Tooltip content="USDT отправляется пользователю">
+<FlowNode variant="output"> User + USDT</FlowNode>
+    </Tooltip>
+  </FlowRow>
+</DiagramContainer>
+
+## Liquidity Provision
+
+### Adding Liquidity
+
+```
+Add Liquidity Flow:
+1. User → Pool: send Token A (amount_a)
+2. User → Pool: send Token B (amount_b)
+3. Pool: verify proportion matches current reserves ratio
+4. Pool: mint LP tokens = min(amount_a/reserve_a, amount_b/reserve_b) × total_lp
+5. Pool → Deploy LP Wallet for user (if first time)
+6. LP Wallet: balance += minted LP tokens
+```
+
+### Removing Liquidity
+
+```
+Remove Liquidity Flow:
+1. User → LP Wallet: burn(lp_amount)
+2. LP Wallet → Pool: "burn_notification(lp_amount, user)"
+3. Pool: calculate proportional share
+   token_a_out = lp_amount / total_lp × reserve_a
+   token_b_out = lp_amount / total_lp × reserve_b
+4. Pool → User: send Token A + Token B
+5. Pool: total_lp -= lp_amount
+```
+
+## Price Impact и Slippage Protection
+
+### Price Impact
+
+```
+Large swap moves price:
+
+Pool: 100,000 TON / 150,000 USDT
+Price: 1 TON = 1.5 USDT
+
+Swap 10,000 TON → USDT:
+  Output = 150,000 × 10,000 / (100,000 + 10,000) = 13,636 USDT
+  Effective price = 1.36 USDT/TON (vs 1.5 → 9.3% price impact!)
+
+Swap 100 TON → USDT:
+  Output = 150,000 × 100 / (100,000 + 100) = 149.85 USDT
+  Effective price = 1.4985 USDT/TON (0.1% price impact)
+```
+
+### Slippage Protection Design
+
+```
+Slippage protection params:
+  min_output: uint128       // minimum tokens to receive
+  deadline: uint32          // transaction expiry timestamp
+
+Pool checks:
+  1. now() < deadline? → if not, refund
+  2. calculated_output >= min_output? → if not, refund
+  3. Execute swap only if both pass
+```
+
+<Callout type="warning">
+**Slippage = user protection, NOT optional**
+
+Без slippage protection пользователь может получить значительно меньше ожидаемого (sandwich attack, large concurrent swaps). dApp должен рассчитывать min_output = expected_output × (1 - slippage_tolerance) и передавать в контракт.
+</Callout>
+
+## Concentrated Liquidity (Advanced)
+
+Стандартный AMM распределяет ликвидность равномерно по всему price range (0..∞). Concentrated Liquidity (Uniswap v3 style) позволяет LP выбрать price range:
+
+```
+Standard AMM:     ликвидность на [0, ∞]
+Concentrated LP:  ликвидность на [1.4, 1.6] USDT/TON
+
+Benefit: в 10-100x capital efficiency для активного range
+Cost:   complexity + impermanent loss risk if price exits range
+```
+
+На TON concentrated liquidity сложнее из-за async: позиции LP — sharded child contracts, position management — multi-message flows. Пока не реализовано в production TON DEX-ах (STON.fi, DeDust используют standard x*y=k).
+
+<KnowledgeCheck>
+AMM DEX на TON: Router (factory + routing) → Pool (per pair, reserves + AMM formula) → LP Wallet (per provider, sharded). Swap = 4-5 async messages, slippage protection обязательна, multi-hop через Router. В следующем уроке: Oracle design — как получать внешние цены.
+</KnowledgeCheck>

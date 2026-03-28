@@ -1,0 +1,132 @@
+---
+title: "TON vs Ethereum vs Solana: архитектурное сравнение"
+description: "Сравнение design decisions трёх ведущих L1 блокчейнов и их влияние на разработку"
+order: 4
+difficulty: "intermediate"
+estimatedTime: 18
+topics: ["Comparison", "Ethereum", "Solana", "Architecture", "Trade-offs"]
+---
+
+# TON vs Ethereum vs Solana
+
+## Три подхода к одной проблеме
+
+Ethereum, Solana и TON — три разных ответа на вопрос «как масштабировать блокчейн для массового adoption». Каждый сделал свои design choices с разными trade-offs.
+
+<DiagramContainer title="Архитектурное сравнение L1 блокчейнов" className="my-6">
+  <Grid columns={4} className="p-4 gap-2">
+    <DataBox label="Параметр" className="font-semibold">Характеристика</DataBox>
+    <Tooltip content="EVM, синхронные вызовы, глобальное состояние">
+      <DataBox label="Ethereum" className="border-blue-500/30 font-semibold">EVM Ecosystem</DataBox>
+    </Tooltip>
+    <Tooltip content="Sealevel runtime, параллельное выполнение, single chain">
+      <DataBox label="Solana" className="border-purple-500/30 font-semibold">Single High-perf Chain</DataBox>
+    </Tooltip>
+    <Tooltip content="TVM, actor model, dynamic sharding">
+      <DataBox label="TON" className="border-emerald-500/30 font-semibold">Infinite Sharding</DataBox>
+    </Tooltip>
+
+    <DataBox>Execution Model</DataBox>
+    <DataBox>Синхронный (EVM)</DataBox>
+    <DataBox>Параллельный (Sealevel)</DataBox>
+    <DataBox>Асинхронный (Actor/TVM)</DataBox>
+
+    <DataBox>Масштабирование</DataBox>
+    <DataBox>L2 rollups</DataBox>
+    <DataBox>Single chain optimization</DataBox>
+    <DataBox>Dynamic sharding (L1)</DataBox>
+
+    <DataBox>Finality</DataBox>
+    <DataBox>~12 сек (1 epoch = 6.4 мин)</DataBox>
+    <DataBox>~400 мс</DataBox>
+    <DataBox>~5 сек</DataBox>
+
+    <DataBox>TPS</DataBox>
+    <DataBox>~30 (L1), тысячи (L2)</DataBox>
+    <DataBox>~4,000</DataBox>
+    <DataBox>~100,000+ (с шардами)</DataBox>
+
+    <DataBox>Tx Cost</DataBox>
+    <DataBox>$0.50-$50 (L1)</DataBox>
+    <DataBox>$0.00025</DataBox>
+    <DataBox>$0.007</DataBox>
+
+    <DataBox>Smart Contract Calls</DataBox>
+    <DataBox>Синхронные (composition)</DataBox>
+    <DataBox>Синхронные (CPI)</DataBox>
+    <DataBox>Асинхронные (messages)</DataBox>
+
+    <DataBox>State Model</DataBox>
+    <DataBox>Account-based (global state)</DataBox>
+    <DataBox>Account-based (Sealevel)</DataBox>
+    <DataBox>Actor-based (isolated state)</DataBox>
+
+    <DataBox>Validator Count</DataBox>
+    <DataBox>~1,000,000+</DataBox>
+    <DataBox>~1,900</DataBox>
+    <DataBox>~350</DataBox>
+
+    <DataBox>Distribution</DataBox>
+    <DataBox>dApps, DeFi protocols</DataBox>
+    <DataBox>Phantom, Solana Mobile</DataBox>
+    <DataBox>Telegram (950M users)</DataBox>
+  </Grid>
+</DiagramContainer>
+
+## Ключевые design differences
+
+### 1. Synchronous vs Asynchronous
+
+**Ethereum:** `ContractA.call(ContractB.method())` — результат мгновенно. Composability «из коробки». Flash loans возможны (всё в одной транзакции).
+
+**TON:** `ContractA → send message → ContractB → send reply`. Результат через 1+ блоков. Flash loans **невозможны** (нет атомарности между контрактами).
+
+<Callout type="tip">
+**Для System Designer: async = другие паттерны**
+
+На Ethereum вы думаете «вызову метод другого контракта и сразу получу результат». На TON вы думаете «отправлю сообщение и обработаю ответ в следующей транзакции». Это фундаментально меняет design: нужны state machines, bounce handlers, timeout mechanisms.
+</Callout>
+
+### 2. Scaling Philosophy
+
+- **Ethereum**: L1 — secure settlement layer. Масштабирование через L2 rollups (Arbitrum, OP, zkSync)
+- **Solana**: Max performance на одной цепи. Vertical scaling (Firedancer validator client)
+- **TON**: L1 масштабируется горизонтально через dynamic sharding. L2 — для specific use cases (payment channels)
+
+### 3. Developer Experience Trade-offs
+
+| Аспект | Ethereum | Solana | TON |
+|--------|----------|--------|-----|
+| Language | Solidity (специализирован) | Rust (системный) | FunC/Tact/Tolk |
+| Tooling maturity | Отличная (10+ лет) | Хорошая (5+ лет) | Растущая (3+ года) |
+| Debugging | Etherscan, Tenderly | Solana Explorer | Tonscan, Tonviewer |
+| Testing | Hardhat, Foundry | Anchor | Blueprint, Sandbox |
+| Developer count | ~300K+ | ~15K+ | ~5K+ |
+
+## Что это значит для TON System Designer
+
+### Преимущества TON
+- **Масштабируемость L1**: не нужно думать о L2 bridges и fragmented liquidity
+- **Telegram distribution**: 950M+ пользователей — уникальное преимущество
+- **Низкие fees**: $0.007 за транзакцию — доступно для micropayments
+
+### Ограничения TON
+- **Async complexity**: проектирование multi-contract flows сложнее, чем на Ethereum
+- **Smaller ecosystem**: меньше libraries, tools, auditors
+- **No flash loans**: некоторые DeFi-паттерны невозможны
+- **Limited validator set**: 350 vs 1M+ (centralization risk)
+
+### Когда выбирать TON
+- Consumer apps с Telegram integration
+- High-throughput applications (games, micropayments)
+- Mini Apps с массовым adoption
+- DeFi с low fees
+
+### Когда НЕ выбирать TON
+- Максимальная decentralization (Ethereum лучше)
+- Composable DeFi (синхронные calls, flash loans)
+- Максимальная latency (Solana быстрее)
+
+<KnowledgeCheck>
+Выбор L1 — это system design decision. TON оптимален для high-throughput consumer apps с Telegram distribution. Ethereum — для DeFi composability и максимальной decentralization. Solana — для latency-critical applications. В следующих уроках мы фокусируемся на TON-specific design patterns.
+</KnowledgeCheck>

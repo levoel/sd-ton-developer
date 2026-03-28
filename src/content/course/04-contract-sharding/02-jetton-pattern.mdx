@@ -1,0 +1,166 @@
+---
+title: "Jetton Pattern: эталон шардированного токена"
+description: "Архитектура Jetton 2.0 — как TON решает проблему масштабируемых токенов"
+order: 2
+difficulty: "advanced"
+estimatedTime: 22
+topics: ["Jetton", "Token Standard", "Sharded Token", "Master-Wallet Pattern"]
+---
+
+# Jetton Pattern: эталон шардированного токена
+
+## Проблема: ERC-20 не масштабируется
+
+На Ethereum, ERC-20 хранит **все балансы** в одном контракте:
+
+```solidity
+// Ethereum ERC-20 — монолитный
+contract Token {
+    mapping(address => uint256) balances;  // ВСЕ пользователи здесь
+    
+    function transfer(to, amount) {
+        balances[msg.sender] -= amount;
+        balances[to] += amount;
+    }
+}
+```
+
+На Ethereum это нормально (нет шардирования). На TON — bottleneck.
+
+## Решение: Jetton = Master + N Wallets
+
+Jetton Standard разделяет state:
+
+<DiagramContainer title="Jetton Architecture: Master + Wallets" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <div className="flex justify-center">
+      <Tooltip content="Master хранит только metadata и total_supply. Не хранит балансы.">
+        <DataBox label="Jetton Master" className="border-blue-500/30 w-64">
+          <div className="text-xs space-y-1">
+            <div>total_supply: 1,000,000</div>
+            <div>name: "MyToken"</div>
+            <div>admin: EQ...admin</div>
+            <div>wallet_code: bytecode</div>
+            <div className="text-blue-400 mt-1">НЕ хранит балансы!</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+    </div>
+    <FlowRow className="gap-2 justify-center">
+      <Arrow direction="down" />
+      <Arrow direction="down" />
+      <Arrow direction="down" />
+    </FlowRow>
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <Tooltip content="Кошелёк Alice — отдельный контракт со своим балансом">
+        <DataBox label="Alice Wallet" className="border-emerald-500/30 w-36">
+          <div className="text-xs">
+            <div>balance: 500</div>
+            <div>owner: Alice</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+      <Tooltip content="Кошелёк Bob — другой контракт, возможно в другом шарде">
+        <DataBox label="Bob Wallet" className="border-emerald-500/30 w-36">
+          <div className="text-xs">
+            <div>balance: 300</div>
+            <div>owner: Bob</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+      <Tooltip content="Каждый новый holder получает свой контракт-кошелёк">
+        <DataBox label="Carol Wallet" className="border-emerald-500/30 w-36">
+          <div className="text-xs">
+            <div>balance: 200</div>
+            <div>owner: Carol</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+## Transfer Flow: 3 сообщения
+
+Перевод 100 tokens от Alice к Bob:
+
+```
+Шаг 1: Alice → Alice's Wallet: "transfer(100, Bob)"
+  Alice's Wallet:
+    - Проверить: owner == Alice? [OK]
+    - Проверить: balance >= 100? [OK]
+    - balance -= 100 (Alice: 500 → 400)
+    - Вычислить адрес Bob's Wallet: hash(wallet_code + init_data(Bob, master))
+    - Отправить internal_transfer(100, Alice) → Bob's Wallet
+
+Шаг 2: Alice's Wallet → Bob's Wallet: "internal_transfer(100, from=Alice)"
+  Bob's Wallet:
+    - Проверить: sender == valid Jetton Wallet? (code hash verification)
+    - balance += 100 (Bob: 300 → 400)
+    - Если Bob's Wallet не существовал — deploy (init_code in message)
+    - Отправить transfer_notification(100, Alice) → Bob
+
+Шаг 3: Bob's Wallet → Bob: "transfer_notification(100, from=Alice)"
+  Bob (может быть контракт или кошелёк):
+    - Получает уведомление: "вам перевели 100 tokens от Alice"
+    - Может обработать: например, DEX обработает swap
+```
+
+### Почему deploy при первом получении?
+
+Если Bob никогда не получал этот токен — его Wallet-контракт **не существует**. Sender (Alice's Wallet) включает `state_init` в сообщение — это **деплоит** Bob's Wallet автоматически. TON достаточно умён, чтобы проигнорировать `state_init`, если контракт уже задеплоен.
+
+## Jetton 2.0: оптимизации
+
+В 2025 году вышла обновлённая версия стандарта Jetton (Jetton 2.0) с оптимизациями:
+
+| Аспект | Jetton v1 | Jetton 2.0 |
+|--------|----------|-----------|
+| Transfer speed | 3 messages | 3 messages (оптимизированные) |
+| Contract calls | Standard | Streamlined (3x faster claiming) |
+| Gas efficiency | Baseline | Optimized state management |
+| Backward compatibility | — | Полная с v1 |
+
+## Security: как Wallet верифицирует sender?
+
+### Проблема: подделка internal_transfer
+
+Злоумышленник может попытаться отправить `internal_transfer(1000000, fake)` напрямую в Bob's Wallet, чтобы зачислить себе токены.
+
+### Решение: Sender Address Verification
+
+```
+Bob's Wallet получает internal_transfer от sender_address:
+
+1. Прочитать claimed_from из body (кто якобы отправил)
+2. Вычислить: expected_sender = hash(wallet_code + init_data(claimed_from, master))
+3. Проверить: sender_address == expected_sender?
+4. Если нет — отклонить! (Sender не является легитимным Wallet)
+```
+
+<Callout type="tip">
+**Deterministic addresses = trustless verification**
+
+Wallet не хранит whitelist допустимых отправителей. Он **вычисляет** ожидаемый адрес sender-а из claimed data. Если вычисленный адрес != actual sender — сообщение поддельное. Это O(1) verification без storage overhead.
+</Callout>
+
+## Design Insights для собственных контрактов
+
+Jetton pattern — **template** для любого sharded state:
+
+| Jetton | Ваш контракт |
+|--------|-------------|
+| Master = metadata + total_supply | Master = global config |
+| Wallet = per-user balance | Child = per-user/per-entity state |
+| transfer = wallet→wallet | operation = child→child |
+| internal_transfer = verified msg | verified_operation = code hash check |
+
+Применяйте этот паттерн к:
+- **NFT Collection**: Collection (master) + Item (child per NFT)
+- **Staking Pool**: Pool (master) + Position (child per staker)
+- **DEX**: Pool (master) + LP Wallet (child per liquidity provider)
+- **Voting**: Proposal (master) + Vote (child per voter)
+
+<KnowledgeCheck>
+Jetton pattern — эталонная реализация sharded design на TON. Master хранит минимум (metadata), wallet хранит per-user state, deterministic addresses обеспечивают trustless verification. В следующих уроках применим этот паттерн к NFT collections и custom sharded контрактам.
+</KnowledgeCheck>

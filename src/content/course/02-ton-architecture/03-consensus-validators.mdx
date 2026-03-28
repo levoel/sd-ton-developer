@@ -1,0 +1,107 @@
+---
+title: "Consensus и Validator Elections"
+description: "BFT+PoS consensus в TON, validator groups, election cycles и их влияние на system design"
+order: 3
+difficulty: "intermediate"
+estimatedTime: 18
+topics: ["Consensus", "BFT", "PoS", "Validators", "Elections"]
+---
+
+# Consensus и Validator Elections
+
+## BFT + PoS: двойная защита
+
+TON комбинирует два механизма:
+
+1. **Proof-of-Stake (PoS)**: Валидаторы стейкают TON → экономический стимул действовать честно
+2. **Byzantine Fault Tolerant (BFT)**: Блок принимается при ≥ 2/3 + 1 голосов → устойчив к ⅓ злонамеренных
+
+### Почему BFT, а не Nakamoto consensus?
+
+| Параметр | Nakamoto (Bitcoin) | BFT (TON) |
+|----------|-------------------|-----------|
+| **Finality** | Вероятностная (~60 мин) | Детерминистическая (~5 сек) |
+| **Fork risk** | Возможны | Невозможны (при < ⅓ byzantine) |
+| **Throughput** | Низкий (~7 TPS) | Высокий (тысячи TPS per shard) |
+| **Validators** | Тысячи miners | ~350 validators |
+| **Energy** | Огромная (PoW) | Минимальная (PoS) |
+
+<Callout type="note">
+**Design Trade-off: Decentralization vs Performance**
+
+TON выбирает **limited validator set** (~350) ради high throughput и fast finality. Ethereum имеет 1M+ validators, но медленнее. Для DeFi и Mini Apps fast finality (~5 сек) критичнее, чем максимальная decentralization.
+</Callout>
+
+## Validator Election Cycle
+
+Валидаторы в TON выбираются через **on-chain election**:
+
+```
+Election Cycle:
+
+1. Election открывается (Elector contract)
+   → Кандидаты подают заявки + стейк (min 300,000 TON)
+
+2. Election закрывается
+   → Top N кандидатов по стейку выбираются
+
+3. Validation round начинается
+   → Выбранные валидаторы обрабатывают блоки
+
+4. Round заканчивается
+   → Rewards распределяются пропорционально стейку
+   → Slashing за downtime/malicious behavior
+   → Стейки разблокируются
+
+5. Новая election → goto 1
+```
+
+<DiagramContainer title="Validator Election Cycle" className="my-6">
+  <FlowRow className="p-4 gap-1 flex-wrap justify-center">
+    <Tooltip content="Кандидаты отправляют стейк в Elector contract">
+      <FlowNode variant="input">Election Open</FlowNode>
+    </Tooltip>
+    <Arrow direction="right" />
+    <Tooltip content="Top N по стейку становятся валидаторами">
+      <FlowNode variant="process">Selection</FlowNode>
+    </Tooltip>
+    <Arrow direction="right" />
+    <Tooltip content="Валидаторы обрабатывают блоки и получают rewards">
+      <FlowNode variant="process">Validation Round</FlowNode>
+    </Tooltip>
+    <Arrow direction="right" />
+    <Tooltip content="Rewards + стейк возвращаются, цикл повторяется">
+      <FlowNode variant="output">Settlement</FlowNode>
+    </Tooltip>
+  </FlowRow>
+</DiagramContainer>
+
+## Collator-Validator Separation
+
+TON разделяет роли:
+
+- **Collator** — собирает транзакции, создаёт block-candidate
+- **Validator** — проверяет block-candidate и голосует
+
+Это разделение позволяет:
+- Collators могут быть менее доверенными (их работа проверяется)
+- Validators фокусируются на verification, а не на сборке блоков
+- Будущее: любой может стать collator (без стейка)
+
+## Влияние на System Design
+
+### 1. Finality = 5 секунд
+
+При проектировании UX учитывайте: пользователь подтвердил транзакцию → результат через ~5 секунд. Для Mini Apps — показывайте pending state.
+
+### 2. Cross-shard finality дольше
+
+Если операция задействует контракты в разных шардах — каждый hop добавляет ~5 сек. DEX swap через 3 контракта в разных шардах = до 15 сек.
+
+### 3. Validator economics влияют на gas
+
+Gas price определяется network config, который обновляется через голосование валидаторов. При проектировании — используйте текущие gas prices, но закладывайте margin для возможных изменений.
+
+<KnowledgeCheck>
+Consensus в TON — это BFT + PoS с ~350 валидаторами и ~5 сек finality. При проектировании систем важно учитывать: 1) cross-shard операции умножают latency, 2) gas prices могут меняться, 3) finality детерминистическая (нет risk of fork). В следующем уроке: сравнение архитектуры TON с Ethereum, Solana и другими L1.
+</KnowledgeCheck>

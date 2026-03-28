@@ -1,0 +1,43 @@
+{
+  "lessonSlug": "06-gas-optimization/02-optimization-techniques",
+  "moduleId": "06-gas-optimization",
+  "_meta": {
+    "idPrefix": "sdton-m06-02"
+  },
+  "questions": [
+    {
+      "id": "sdton-m06-02-q1",
+      "type": "multiple-choice",
+      "question": "Контракт загружает state из storage 3 раза в одном handler (load_data() × 3). Как оптимизировать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Это нормально — TVM кэширует state автоматически"
+        },
+        {
+          "id": "b",
+          "text": "Удалить state — хранить данные off-chain"
+        },
+        {
+          "id": "c",
+          "text": "Single load: вызвать load_data() один раз, сохранить в переменную, использовать повторно. Каждый load = ~100 gas units за cell load"
+        },
+        {
+          "id": "d",
+          "text": "Использовать global variables вместо state"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "TVM НЕ кэширует cell loads автоматически. Каждый load_data() = повторная загрузка cells из storage = ~100 gas per cell. Single load + reuse переменной — простейшая оптимизация, экономит 200+ gas per handler при 3 полях.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m06-02-q2",
+      "type": "true-false",
+      "question": "Паттерн excess return: пользователь отправляет 0.1 TON для swap, фактический cost 0.03 TON, контракт возвращает 0.07 TON — это стандартная практика на TON.",
+      "correctAnswer": true,
+      "explanation": "Excess return — стандартный UX pattern на TON. Пользователь всегда отправляет с запасом (gas estimation показывает approximate fee), контракт использует сколько нужно и возвращает excess через response message. Все TON DeFi (STON.fi, DeDust) используют этот паттерн.",
+      "bloomLevel": "conceptual"
+    }
+  ]
+}

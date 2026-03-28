@@ -1,0 +1,61 @@
+{
+  "lessonSlug": "06-gas-optimization/01-gas-model",
+  "moduleId": "06-gas-optimization",
+  "_meta": {
+    "idPrefix": "sdton-m06-01"
+  },
+  "questions": [
+    {
+      "id": "sdton-m06-01-q1",
+      "type": "multiple-choice",
+      "question": "В TON транзакции, Storage Phase выполняется ДО Credit Phase. Какое практическое последствие?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Если контракт долго не получал сообщений, накопленный storage debt списывается ДО зачисления value. Весь value может уйти на debt, и на compute не останется"
+        },
+        {
+          "id": "b",
+          "text": "Нет последствий — порядок фаз не важен"
+        },
+        {
+          "id": "c",
+          "text": "Storage phase бесплатна"
+        },
+        {
+          "id": "d",
+          "text": "Credit phase всегда происходит первой"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Порядок: Storage → Credit → Compute → Action → Bounce. Storage debt за время без транзакций списывается первым. Пример: контракт не использовался 6 месяцев, накопил 0.05 TON storage debt. Пользователь отправляет 0.03 TON → после storage phase баланс = -0.02 TON → контракт freeze.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m06-01-q2",
+      "type": "multiple-choice",
+      "question": "DEX swap проходит через 3 контракта. Как рассчитать total gas для пользователя?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Gas = compute_fee первого контракта"
+        },
+        {
+          "id": "b",
+          "text": "Gas = сумма (compute + forward) для КАЖДОГО hop в цепочке + safety margin. Excess возвращается пользователю терминальным контрактом"
+        },
+        {
+          "id": "c",
+          "text": "Gas фиксирован для всех операций на TON"
+        },
+        {
+          "id": "d",
+          "text": "Каждый контракт платит gas из своего баланса"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Total gas = Σ(compute_fee_i + forward_fee_i) для i=1..N hops + safety margin. Пользователь отправляет total в первом сообщении. Каждый контракт забирает свой compute + forward и пересылает остаток. Терминальный контракт возвращает excess пользователю.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

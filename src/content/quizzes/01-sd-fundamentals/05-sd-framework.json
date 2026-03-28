@@ -1,0 +1,69 @@
+{
+  "lessonSlug": "01-sd-fundamentals/05-sd-framework",
+  "moduleId": "01-sd-fundamentals",
+  "_meta": {
+    "idPrefix": "sdton-m01-05"
+  },
+  "questions": [
+    {
+      "id": "sdton-m01-05-q1",
+      "type": "multiple-choice",
+      "question": "В 6-Step Blockchain SD Framework, какой шаг определяет, что должно быть on-chain, а что off-chain?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Шаг 2: On-chain / Off-chain Split"
+        },
+        {
+          "id": "b",
+          "text": "Шаг 1: Requirements & Constraints"
+        },
+        {
+          "id": "c",
+          "text": "Шаг 3: Contract Architecture"
+        },
+        {
+          "id": "d",
+          "text": "Шаг 6: Production Readiness"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Шаг 2 (On-chain / Off-chain Split) определяет, какие данные и логика должны быть на блокчейне (trustless verification), а какие — вне блокчейна (UI, аналитика, метаданные). Правило: on-chain = minimum viable state. Это критически влияет на gas costs и масштабируемость.",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "sdton-m01-05-q2",
+      "type": "multiple-choice",
+      "question": "Вы проектируете staking pool на TON с TVL $10M+. Какой нефункциональный параметр должен иметь наивысший приоритет?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Gas cost — операции должны быть максимально дешёвыми"
+        },
+        {
+          "id": "b",
+          "text": "Security — при TVL $10M+ безопасность критична, требуется formal verification"
+        },
+        {
+          "id": "c",
+          "text": "Latency — стейкинг/анстейкинг должны быть мгновенными"
+        },
+        {
+          "id": "d",
+          "text": "Throughput — пул должен обрабатывать миллионы стейков в секунду"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "При TVL (Total Value Locked) $10M+ безопасность — наивысший приоритет. Уязвимость в контракте может привести к потере всех средств пользователей. Gas cost и latency важны, но не критичны для staking (это не instant trading). Throughput для ~10K стейкеров — не bottleneck.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m01-05-q3",
+      "type": "true-false",
+      "question": "При проектировании системы на TON, метаданные NFT (изображения, описания) следует хранить on-chain для обеспечения decentralization.",
+      "correctAnswer": false,
+      "explanation": "Метаданные NFT (особенно изображения) слишком велики для хранения on-chain — storage fees будут огромными. Стандартная практика: on-chain хранится URL/hash метаданных, а сами данные — на IPFS или TON Storage. Это сохраняет decentralization (IPFS content-addressable), но без excess storage costs.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

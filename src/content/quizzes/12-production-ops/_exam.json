@@ -1,0 +1,101 @@
+{
+  "lessonSlug": "12-production-ops/_exam",
+  "moduleId": "12-production-ops",
+  "examTitle": "Экзамен: Мониторинг и Production Ops",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdton-m12-exam"
+  },
+  "questions": [
+    {
+      "id": "sdton-m12-exam-q1",
+      "type": "multiple-choice",
+      "question": "Вы настраиваете мониторинг для DEX на TON. Bounce rate контракта pool вырос с 1% до 15% за час. Что это может означать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Нормальный рост — ничего не делать"
+        },
+        {
+          "id": "b",
+          "text": "Высокий bounce rate = 15% сообщений fail. Возможные причины: 1) Gas forwarding недостаточен (recent gas price change), 2) Bug в message handler, 3) Counterparty contracts offline/frozen. Требует investigation"
+        },
+        {
+          "id": "c",
+          "text": "Bounce rate не важен для мониторинга"
+        },
+        {
+          "id": "d",
+          "text": "Нужно увеличить validator count"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите урок 1: Production Operations — Key Metrics",
+      "explanation": "Bounce rate 15% = 15% операций fail. Это P1 alert. Root causes: gas price increase (hardcoded values broke), contract code bug (exception in handler), or downstream contracts frozen (no balance). Immediate: check recent transactions for error patterns. Fix: update gas forwarding, fix bug, top-up frozen contracts.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m12-exam-q2",
+      "type": "true-false",
+      "question": "On-chain events (external out messages) на TON могут быть использованы как надёжный источник данных для аналитики и off-chain систем.",
+      "correctAnswer": true,
+      "explanation": "Контракт может emit external out messages (log events) — они записываются в блокчейн и доступны через indexer APIs (tonapi, toncenter). Indexers парсят эти events и сохраняют в БД для: аналитики, transaction history, alert triggers. Это основной mechanism для on-chain → off-chain data flow.",
+      "studyHint": "Повторите урок 1: Production Operations — On-chain Events и Indexing",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "sdton-m12-exam-q3",
+      "type": "multiple-choice",
+      "question": "Production контракт DeFi vault. Backend мониторинг показывает: contract balance упал ниже 6-month storage reserve. Какой automated response правильный?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Ничего — если контракт заморожен, пользователи сами пополнят"
+        },
+        {
+          "id": "b",
+          "text": "Перенести контракт на другой workchain с низкими fees"
+        },
+        {
+          "id": "c",
+          "text": "Auto top-up: monitoring bot отправляет TON на контракт из treasury wallet. Alert P2 → team notification. Если balance < 1-month reserve → P1 alert + emergency top-up + freeze risk assessment"
+        },
+        {
+          "id": "d",
+          "text": "Остановить контракт и вывести все средства пользователей"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите урок 1: Production Operations — Balance Monitoring и Auto Top-up",
+      "explanation": "Tiered alerting: 6-month threshold = P2 (warning, auto top-up). 1-month threshold = P1 (critical, emergency action). Auto top-up bot: мониторит баланс через get-method, отправляет TON из treasury при low balance. Без auto top-up → контракт замораживается → все операции fail → пользователи теряют доступ к средствам.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m12-exam-q4",
+      "type": "multiple-choice",
+      "question": "Вы настраиваете CI/CD pipeline для деплоя контрактов на TON mainnet. Какой набор pre-deploy checks обязателен?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Достаточно unit tests — если проходят, можно деплоить"
+        },
+        {
+          "id": "b",
+          "text": "Deploy напрямую из IDE без CI/CD — быстрее"
+        },
+        {
+          "id": "c",
+          "text": "Manual review каждого deploy командой из 5 человек"
+        },
+        {
+          "id": "d",
+          "text": "1) Compile + unit tests (FunC/Tact). 2) Integration tests на sandbox. 3) Deploy на testnet + smoke tests. 4) Code hash verification (compiled code matches audited version). 5) Mainnet deploy с timelock/multisig approval"
+        }
+      ],
+      "correctAnswer": "d",
+      "studyHint": "Повторите урок 1: Production Operations — CI/CD и Deployment Best Practices",
+      "explanation": "Five-stage pipeline: 1) Compile + unit — catch code errors early. 2) Integration sandbox — verify cross-contract interactions. 3) Testnet deploy + smoke — real network behavior. 4) Code hash verification — ensure deployed binary matches audited source. 5) Mainnet with multisig — prevent unauthorized deploys. Skipping any stage = risk of deploying buggy/unaudited code to mainnet.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

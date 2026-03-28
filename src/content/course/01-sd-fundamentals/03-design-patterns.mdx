@@ -1,0 +1,238 @@
+---
+title: "Design Patterns для распределённых систем"
+description: "Паттерны проектирования распределённых систем и их применение к блокчейн-архитектуре"
+order: 3
+difficulty: "intermediate"
+estimatedTime: 20
+topics: ["Design Patterns", "Distributed Systems", "Event Sourcing", "CQRS", "Saga"]
+---
+
+
+# Design Patterns для распределённых систем
+
+## Зачем паттерны
+
+Design patterns — это проверенные решения для повторяющихся проблем. В распределённых системах (и в блокчейне) одни и те же проблемы возникают снова и снова:
+
+- Как гарантировать доставку сообщений?
+- Как обработать частичный сбой многошаговой операции?
+- Как разделить чтение и запись для масштабирования?
+- Как восстановить состояние после сбоя?
+
+## Pattern 1: Event Sourcing
+
+**Проблема:** Как хранить историю изменений состояния, чтобы можно было восстановить любое прошлое состояние?
+
+**Решение:** Вместо хранения текущего состояния — хранить **последовательность событий**, которые привели к нему.
+
+```
+Традиционный подход:
+balance = 100  (перезаписывается при каждой операции)
+
+Event Sourcing:
+Event 1: deposit(50)   → balance: 50
+Event 2: deposit(100)  → balance: 150
+Event 3: withdraw(50)  → balance: 100
+```
+
+### Применение к TON
+
+**Блокчейн — это Event Sourcing по определению.** Каждая транзакция — это событие. Состояние контракта — результат применения всех транзакций от genesis block.
+
+<DiagramContainer title="Event Sourcing в TON" className="my-6">
+  <FlowRow className="p-4 gap-2 flex-wrap justify-center">
+    <Tooltip content="Начальное состояние контракта при деплое">
+      <FlowNode variant="input">Deploy</FlowNode>
+    </Tooltip>
+    <Arrow direction="right" />
+    <Tooltip content="Первое входящее сообщение изменяет состояние">
+      <FlowNode variant="process">msg: deposit(50)</FlowNode>
+    </Tooltip>
+    <Arrow direction="right" />
+    <Tooltip content="Второе сообщение — ещё одно событие">
+      <FlowNode variant="process">msg: deposit(100)</FlowNode>
+    </Tooltip>
+    <Arrow direction="right" />
+    <Tooltip content="Третье сообщение — вывод средств">
+      <FlowNode variant="process">msg: withdraw(50)</FlowNode>
+    </Tooltip>
+    <Arrow direction="right" />
+    <Tooltip content="Текущее состояние — результат всех событий">
+      <FlowNode variant="output">State: balance=100</FlowNode>
+    </Tooltip>
+  </FlowRow>
+</DiagramContainer>
+
+**Design Insight:** Поскольку блокчейн уже реализует Event Sourcing на уровне протокола, ваши контракты должны быть **идемпотентными** — повторная обработка одного и того же события не должна ломать состояние.
+
+## Pattern 2: Saga Pattern
+
+**Проблема:** Как выполнить многошаговую операцию, когда каждый шаг может отказать, а откатить блокчейн-транзакцию невозможно?
+
+**Решение:** Разбить операцию на шаги. Каждый шаг имеет **компенсирующую транзакцию**. При сбое выполняются компенсации в обратном порядке.
+
+### Применение к TON: DEX Swap
+
+DEX swap на TON — классическая Saga:
+
+<DiagramContainer title="Saga Pattern: DEX Swap на TON" className="my-6">
+  <FlowColumn className="p-4 gap-1">
+    <FlowRow className="gap-2 justify-center">
+      <Tooltip content="Шаг 1: пользователь отправляет Token A на контракт DEX">
+        <DataBox label="Шаг 1" className="w-48">
+          Отправить Token A → DEX
+          <div className="text-xs text-red-400 mt-1">Компенсация: вернуть Token A</div>
+        </DataBox>
+      </Tooltip>
+      <Arrow direction="right" />
+      <Tooltip content="Шаг 2: DEX рассчитывает курс и резервирует Token B">
+        <DataBox label="Шаг 2" className="w-48">
+          DEX: рассчитать курс
+          <div className="text-xs text-red-400 mt-1">Компенсация: отменить резерв</div>
+        </DataBox>
+      </Tooltip>
+      <Arrow direction="right" />
+      <Tooltip content="Шаг 3: DEX отправляет Token B пользователю">
+        <DataBox label="Шаг 3" className="w-48">
+          Отправить Token B → User
+          <div className="text-xs text-emerald-400 mt-1">Завершение Saga</div>
+        </DataBox>
+      </Tooltip>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+<Callout type="warning">
+**Критически важно в TON**
+
+Каждый шаг Saga в TON — это отдельное **асинхронное сообщение**. Между шагами 1 и 2 может пройти время, за которое курс изменится. Поэтому DEX контракты используют **slippage tolerance** — максимальное допустимое отклонение курса.
+
+Если шаг 3 не удался (например, у DEX не хватило Token B), контракт должен автоматически отправить bounce message для компенсации шага 1.
+</Callout>
+
+## Pattern 3: CQRS (Command Query Responsibility Segregation)
+
+**Проблема:** Чтение и запись имеют разные требования к производительности и масштабированию.
+
+**Решение:** Разделить модель на **Command** (запись/изменение) и **Query** (чтение).
+
+### Применение к TON
+
+В TON это разделение встроено на уровне протокола:
+
+| Операция | Тип | Стоимость | Модификация |
+|----------|-----|-----------|-------------|
+| Отправка сообщения | **Command** | Платная (gas) | Изменяет state |
+| Get-method вызов | **Query** | Бесплатная | Только чтение |
+
+```
+Command path (on-chain):
+User → external message → Contract → state change → new block
+
+Query path (off-chain):
+dApp → lite-server → get_method() → return data (бесплатно, мгновенно)
+```
+
+**Design Insight:** При проектировании TON-контрактов всегда разделяйте логику изменения состояния (handlers) и логику чтения (get-methods). Get-methods должны предоставлять все данные, нужные фронтенду, без необходимости отправлять on-chain транзакции.
+
+## Pattern 4: Circuit Breaker
+
+**Проблема:** Один неисправный компонент вызывает каскадный отказ всей системы.
+
+**Решение:** При обнаружении сбоя — «разомкнуть» цепь: прекратить отправку запросов к неисправному компоненту и вернуть быстрый ответ об ошибке.
+
+### Применение к TON
+
+В TON circuit breaker реализуется через **bounce messages**:
+
+```
+Normal flow:
+ContractA → message → ContractB → обработка → ответ
+
+Bounce flow (circuit breaker):
+ContractA → message → ContractB → FAIL (исключение)
+                                     ↓
+                              bounce message → ContractA
+                                     ↓
+                           ContractA обрабатывает bounce → компенсация
+```
+
+<Callout type="note">
+**Bounce = автоматический Circuit Breaker**
+
+В TON, если контракт не смог обработать входящее сообщение и бросил исключение, система автоматически отправляет bounce message обратно отправителю. Это встроенный circuit breaker — отправитель узнаёт о проблеме и может отреагировать (вернуть средства, повторить операцию, записать ошибку).
+
+Но важно: **bounce работает только для internal messages с флагом `bounce: true`**. Если вы не установили этот флаг, средства будут потеряны при сбое.
+</Callout>
+
+## Pattern 5: Idempotency
+
+**Проблема:** Сообщение может быть доставлено повторно. Повторная обработка не должна ломать состояние.
+
+**Решение:** Каждая операция должна давать **одинаковый результат** при многократном выполнении.
+
+### Применение к TON
+
+В TON сообщения имеют **query_id** — уникальный идентификатор. Контракт может хранить `processed_queries` и игнорировать повторные:
+
+```javascript
+// Псевдокод TON-контракта с идемпотентностью
+receive(msg) {
+  let query_id = msg.query_id;
+  
+  // Проверяем, не обработали ли уже
+  if (self.processed.has(query_id)) {
+    return; // Идемпотентность: повторное сообщение игнорируется
+  }
+  
+  // Обрабатываем
+  self.balance += msg.amount;
+  self.processed.add(query_id);
+}
+```
+
+<Callout type="warning">
+**Trade-off: идемпотентность vs storage fee**
+
+Хранение `processed_queries` в контракте стоит денег (storage fee). В production-системах обычно хранят только последние N query_id или используют timestamp-based подход вместо полного множества.
+</Callout>
+
+## Сводная таблица паттернов
+
+<DiagramContainer title="Design Patterns: Применение к TON" className="my-6">
+  <Grid columns={4} className="p-4 gap-2">
+    <DataBox label="Pattern" className="font-semibold">Что решает</DataBox>
+    <DataBox label="Классика" className="font-semibold">Традиционные системы</DataBox>
+    <DataBox label="TON" className="font-semibold">Реализация в TON</DataBox>
+    <DataBox label="Модуль" className="font-semibold">Где подробнее</DataBox>
+    
+    <DataBox label="Event Sourcing">История изменений</DataBox>
+    <DataBox>Event Store, Kafka</DataBox>
+    <DataBox>Блокчейн = event log</DataBox>
+    <DataBox>M03, M05</DataBox>
+    
+    <DataBox label="Saga">Multi-step operations</DataBox>
+    <DataBox>Orchestrator / Choreography</DataBox>
+    <DataBox>Message chains + bounce</DataBox>
+    <DataBox>M07 (DeFi)</DataBox>
+    
+    <DataBox label="CQRS">Read/write separation</DataBox>
+    <DataBox>Read replicas, views</DataBox>
+    <DataBox>Messages vs get-methods</DataBox>
+    <DataBox>M04, M09</DataBox>
+    
+    <DataBox label="Circuit Breaker">Cascade failure prevention</DataBox>
+    <DataBox>Hystrix, resilience4j</DataBox>
+    <DataBox>Bounce messages</DataBox>
+    <DataBox>M03, M11</DataBox>
+    
+    <DataBox label="Idempotency">Duplicate protection</DataBox>
+    <DataBox>Idempotency keys</DataBox>
+    <DataBox>query_id tracking</DataBox>
+    <DataBox>M03, M07</DataBox>
+  </Grid>
+</DiagramContainer>
+
+<KnowledgeCheck>
+Эти пять паттернов — рабочий минимум для проектирования надёжных систем на TON. В следующих модулях мы увидим, как каждый из них применяется на практике — при проектировании DeFi, Mini Apps и production-систем. Следующий урок: как документировать и обосновывать архитектурные решения.
+</KnowledgeCheck>

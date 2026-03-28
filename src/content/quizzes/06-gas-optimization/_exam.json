@@ -1,0 +1,119 @@
+{
+  "lessonSlug": "06-gas-optimization/_exam",
+  "moduleId": "06-gas-optimization",
+  "examTitle": "Экзамен: Gas, Fees и оптимизация",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdton-m06-exam"
+  },
+  "questions": [
+    {
+      "id": "sdton-m06-exam-q1",
+      "type": "multiple-choice",
+      "question": "Контракт DEX Pool имеет 10,000 cells в state, monthly storage fee 0.3 TON. Pool зарабатывает 0.3% fee с каждого swap, средний swap = 50 TON, 100 swaps/день. Sustainable ли pool?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Да — monthly revenue = 100 × 30 × 50 × 0.003 = 450 TON >> 0.3 TON storage. Highly sustainable"
+        },
+        {
+          "id": "b",
+          "text": "Нет — 0.3 TON/month storage съедает весь revenue"
+        },
+        {
+          "id": "c",
+          "text": "Невозможно определить без знания gas price"
+        },
+        {
+          "id": "d",
+          "text": "Нет — pool не может зарабатывать, все fees идут валидаторам"
+        }
+      ],
+      "correctAnswer": "a",
+      "studyHint": "Повторите урок 3: Contract Economics — Sustainability Formula",
+      "explanation": "Revenue: 100 swaps/day × 30 days × 50 TON × 0.3% = 450 TON/month. Cost: 0.3 TON storage + minimal operational. Revenue >> Cost → highly sustainable. Это типичная экономика для активных DeFi pools.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m06-exam-q2",
+      "type": "multiple-choice",
+      "question": "Разработчик отправляет message с forward_fee = 0.001 TON. Message содержит 5 cells и 2000 bits. Forward fee formula: lump(0.0004) + cells × 0.0004 + bits × 0.000000001. Хватит ли 0.001 TON?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Да — 0.001 > расчётного"
+        },
+        {
+          "id": "b",
+          "text": "Нет — 0.0004 + 5 × 0.0004 + 2000 × 0.000000001 = 0.0024 TON > 0.001 TON. Не хватит, message не будет отправлен"
+        },
+        {
+          "id": "c",
+          "text": "Forward fee не зависит от размера message"
+        },
+        {
+          "id": "d",
+          "text": "Forward fee оплачивается получателем"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите урок 1: Gas Model — Forward Fee формулы",
+      "explanation": "Forward fee = lump_price + cells × cell_price + bits × bit_price = 0.0004 + 5 × 0.0004 + 0.000002 ≈ 0.0024 TON. Отправитель указал 0.001 < 0.0024 → insufficient forward fee → action phase fail. Решение: использовать get_forward_fee() для dynamic calculation.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m06-exam-q3",
+      "type": "multiple-choice",
+      "question": "Архитектор предлагает отправлять 5 separate notification messages при каждом DEX swap (user, analytics, admin, treasury, referral). Как оптимизировать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Это нормально — 5 messages не дорого"
+        },
+        {
+          "id": "b",
+          "text": "Увеличить gas limit для поддержки 5 messages"
+        },
+        {
+          "id": "c",
+          "text": "Свести к 1-2 messages: send excess to user (обязательно), emit log event для off-chain (analytics/admin подхватят через indexer). Treasury fee = deduct from swap amount (no separate msg). Referral = batch periodic"
+        },
+        {
+          "id": "d",
+          "text": "Отправлять notification off-chain через API"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите урок 2: Optimization Techniques — minimize outgoing messages",
+      "explanation": "5 messages = 5 × forward_fee ≈ 0.006 TON per swap. Optimization: 1) User excess return — mandatory, 1 msg. 2) Analytics/admin — emit log (0 messages, off-chain indexers подхватят). 3) Treasury fee — deduct from swap, accumulate in pool balance, periodic withdrawal. 4) Referral — batch monthly. Result: 1 msg instead of 5, saving ~0.005 TON per swap.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m06-exam-q4",
+      "type": "multiple-choice",
+      "question": "Контракт DeFi vault хранит 500 cells в state. Gas config изменился: storage fee выросла в 3 раза. Текущий баланс vault = 0.5 TON. Через какое время контракт будет заморожен при отсутствии новых deposits?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Никогда — контракт не может быть заморожен"
+        },
+        {
+          "id": "b",
+          "text": "Заморожен мгновенно после изменения gas config"
+        },
+        {
+          "id": "c",
+          "text": "Через 1 год — storage fee фиксирована при deploy"
+        },
+        {
+          "id": "d",
+          "text": "Рассчитать: new annual storage ≈ 500 cells × new_cell_price × 3. Если new annual > 0.5 TON — freeze в течение года. Мониторинг balance + auto top-up mechanism + alert при balance < 6-month reserve"
+        }
+      ],
+      "correctAnswer": "d",
+      "studyHint": "Повторите урок 3: Contract Economics — Storage Fee Sustainability и freeze protection",
+      "explanation": "Storage fee не фиксируется при deploy — она определяется текущим gas config. При 3× увеличении: annual fee = 500 × old_cell_price × 3. Если баланс не покрывает — контракт замораживается. Решение: мониторинг баланса, auto top-up при низком балансе, alert system. Контракт МОЖЕТ быть unfrozen через специальное сообщение с TON.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

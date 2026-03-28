@@ -1,0 +1,43 @@
+{
+  "lessonSlug": "03-actor-model/03-bounce-handling",
+  "moduleId": "03-actor-model",
+  "_meta": {
+    "idPrefix": "sdton-m03-03"
+  },
+  "questions": [
+    {
+      "id": "sdton-m03-03-q1",
+      "type": "multiple-choice",
+      "question": "Contract A отправляет 1 TON в Contract B с bounce:true. Contract B бросает исключение. Сколько TON получит Contract A обратно в bounce?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Ровно 1 TON — полный возврат"
+        },
+        {
+          "id": "b",
+          "text": "0 TON — bounce не возвращает средства"
+        },
+        {
+          "id": "c",
+          "text": "Меньше 1 TON — bounce message тоже стоит gas (forward fee + compute fee для bounce). Точная сумма = 1 TON - gas_consumed_by_B - bounce_forward_fee"
+        },
+        {
+          "id": "d",
+          "text": "2 TON — двойной возврат как компенсация"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "Bounce message содержит остаток value после вычета газа: original_value - gas_used_by_failed_tx - bounce_forward_fee. Это меньше оригинального value. При проектировании учитывайте: bounce может вернуть только часть средств, не 100%.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m03-03-q2",
+      "type": "true-false",
+      "question": "Если bounce handler контракта A тоже бросит исключение при обработке bounce message от B, TON НЕ отправит ещё один bounce (нет double bounce).",
+      "correctAnswer": true,
+      "explanation": "Верно. TON не генерирует double bounce — bounce message уже имеет flag bounced=true, и если его обработка провалится, второй bounce не создаётся. Это предотвращает бесконечные цепочки bounce. Поэтому bounce handlers должны быть максимально простыми и не бросать исключения.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

@@ -1,0 +1,167 @@
+---
+title: "Многослойная архитектура TON"
+description: "Masterchain, workchains и shardchains — зачем три уровня и как они взаимодействуют"
+order: 1
+difficulty: "intermediate"
+estimatedTime: 20
+topics: ["TON Architecture", "Masterchain", "Workchains", "Shardchains", "Multi-blockchain"]
+---
+
+# Многослойная архитектура TON
+
+## Почему три уровня, а не один
+
+Большинство блокчейнов — это **одна цепочка**: все транзакции обрабатываются последовательно в одном потоке. Bitcoin, Ethereum (до шардинга), Solana — все работают на одной цепи. Это создаёт bottleneck: производительность ограничена скоростью одного потока.
+
+TON решает эту проблему **иерархической архитектурой** из трёх уровней:
+
+<DiagramContainer title="Трёхуровневая архитектура TON" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <Tooltip content="Единственный masterchain координирует всю сеть: хранит конфигурацию, validator set, хеши всех shardchain-блоков">
+      <DataBox label="Masterchain (1 штука)" className="border-blue-500/30 w-full">
+        <div className="text-xs space-y-1">
+          <div>• Конфигурация сети (параметры gas, validator set)</div>
+          <div>• Хеши последних блоков всех shardchains</div>
+          <div>• Координация validator elections</div>
+          <div>• Global state commitment каждые ~5 сек</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Arrow direction="down" />
+    <FlowRow className="gap-3 justify-center">
+      <Tooltip content="Workchain 0 — основная рабочая цепь TON. Здесь живут все пользовательские контракты, токены, DeFi">
+        <DataBox label="Workchain 0 (основная)" className="border-emerald-500/30">
+          <div className="text-xs">Все аккаунты и smart contracts</div>
+        </DataBox>
+      </Tooltip>
+      <Tooltip content="Потенциально до 2^32 workchains с разными правилами, но сейчас используется только Workchain 0">
+        <DataBox label="Workchain 1...N (будущие)" className="border-slate-500/30 opacity-50">
+          <div className="text-xs">До 2^32 workchains (пока не активированы)</div>
+        </DataBox>
+      </Tooltip>
+    </FlowRow>
+    <Arrow direction="down" />
+    <FlowRow className="gap-2 justify-center flex-wrap">
+      <Tooltip content="Shardchain обрабатывает транзакции для группы аккаунтов с близкими адресами">
+        <DataBox label="Shard (0,8)" className="border-orange-500/30 w-28">
+          <div className="text-[10px]">Аккаунты 0x0...</div>
+        </DataBox>
+      </Tooltip>
+      <Tooltip content="Каждый шард работает параллельно и независимо">
+        <DataBox label="Shard (8,8)" className="border-orange-500/30 w-28">
+          <div className="text-[10px]">Аккаунты 0x8...</div>
+        </DataBox>
+      </Tooltip>
+      <Tooltip content="При росте нагрузки шарды автоматически делятся на более мелкие">
+        <DataBox label="Shard ..." className="border-orange-500/30 w-28">
+          <div className="text-[10px]">Auto-split при нагрузке</div>
+        </DataBox>
+      </Tooltip>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+### Роль каждого уровня
+
+| Уровень | Количество | Задача | Аналогия |
+|---------|-----------|--------|----------|
+| **Masterchain** | 1 | Координация, конфигурация, global state | Штаб-квартира компании |
+| **Workchains** | До 2^32 (сейчас 1) | Среда выполнения с правилами | Филиалы с разными правилами |
+| **Shardchains** | До 2^60 на workchain | Параллельная обработка транзакций | Отделы внутри филиала |
+
+## Masterchain: координатор сети
+
+Masterchain — **единый источник правды** для всей сети TON. Он не обрабатывает пользовательские транзакции, а выполняет функции координации:
+
+### Что хранит masterchain
+
+```
+Masterchain State:
+├── Validator Set (текущие валидаторы + их стейки)
+├── Network Config (параметры gas, storage fees, voting)
+├── Shard Descriptions (хеши последних блоков каждого шарда)
+├── Elector Contract (выборы валидаторов)
+├── Config Contract (обновление параметров через голосование)
+└── Minter Contract (управление TON supply)
+```
+
+### Design Decision: зачем отдельный masterchain?
+
+**Альтернатива:** Хранить конфигурацию и координацию прямо в шардах, как Ethereum.
+
+**Проблема:** Если конфигурация распределена по шардам, достижение global consensus требует синхронизации всех шардов. При 100+ шардах это становится bottleneck.
+
+**Решение TON:** Отдельная цепочка для metadata. Masterchain маленький (мало транзакций), но обрабатывается всеми валидаторами. Это обеспечивает:
+- Быстрый global consensus (~5 сек)
+- Единый snapshot состояния всех шардов
+- Проверяемость: любой lite-client может проверить Merkle proof от masterchain до конкретного аккаунта
+
+<Callout type="tip">
+**Design Insight для ваших систем**
+
+Паттерн «отдельный координатор» применим не только к блокчейну. В microservices это Service Registry (Consul, etcd). В data engineering — Hive Metastore для Lakehouse. Идея та же: metadata store не обрабатывает данные, а координирует тех, кто обрабатывает.
+</Callout>
+
+## Workchains: среды выполнения
+
+Workchain — это **полноценная блокчейн-среда** со своими правилами:
+- Свой формат адресов
+- Свой virtual machine
+- Свои правила gas и storage
+- Свой набор системных контрактов
+
+**Сейчас активен только Workchain 0** — основная рабочая цепочка TON. Все пользовательские контракты, Jettons, NFT, DeFi — живут здесь.
+
+### Зачем нужны дополнительные workchains?
+
+Потенциальные use cases:
+- **EVM-совместимый workchain** — для запуска Ethereum-контрактов на TON
+- **Privacy workchain** — с zk-SNARK транзакциями
+- **Regulated workchain** — для финансовых институтов с KYC
+
+Каждый workchain может иметь другой VM (не TVM), другие gas rules и другие типы аккаунтов. Это даёт TON гибкость, которой нет у single-VM блокчейнов.
+
+## Shardchains: параллельная обработка
+
+Shardchains — **ядро масштабируемости TON**. Каждый шарды:
+- Обрабатывает транзакции для группы аккаунтов
+- Работает **параллельно** с другими шардами
+- Может **автоматически делиться** при росте нагрузки
+- Может **объединяться** при снижении нагрузки
+
+### Как определяется шард аккаунта
+
+Каждый аккаунт в TON имеет 256-битный адрес. Шард определяется **префиксом адреса**:
+
+```
+Shard (prefix_len=1):
+  Shard 0: аккаунты 0x0... — 0x7...  (первый бит = 0)
+  Shard 1: аккаунты 0x8... — 0xF...  (первый бит = 1)
+
+Split → Shard (prefix_len=2):
+  Shard 00: аккаунты 0x0... — 0x3...
+  Shard 01: аккаунты 0x4... — 0x7...
+  Shard 10: аккаунты 0x8... — 0xB...
+  Shard 11: аккаунты 0xC... — 0xF...
+```
+
+<Callout type="warning">
+**Критически важно для System Design**
+
+Два контракта с похожими адресами (общий prefix) попадают в один шард. Если они часто общаются — это хорошо (intra-shard messages бесплатнее). Если один из них hot (много транзакций) — это плохо (шард перегружен).
+
+При проектировании системы контрактов вы **не контролируете**, в каком шарде окажется контракт. Но вы контролируете **как** контракты общаются, и можете проектировать sharding-friendly архитектуру.
+</Callout>
+
+## Сравнение с другими подходами к масштабированию
+
+| Подход | Блокчейн | Масштабирование | Trade-off |
+|--------|----------|-----------------|-----------|
+| Одна цепь | Bitcoin, Solana | Вертикальное | Ограничено hardware |
+| Фиксированные шарды | Ethereum 2.0 (64 шарда) | Горизонтальное, фиксированное | Не адаптируется к нагрузке |
+| **Динамические шарды** | **TON** | **Горизонтальное, адаптивное** | Сложность cross-shard |
+| L2 rollups | Ethereum (Arbitrum, OP) | Off-chain processing | Trust assumptions, bridge risk |
+
+<KnowledgeCheck>
+TON — единственный production-блокчейн с **динамическим** шардированием. Шарды создаются и уничтожаются автоматически. Это определяет все архитектурные решения: от design контрактов до gas optimization. В следующем уроке разберём Infinite Sharding Paradigm и Hypercube Routing — два уникальных механизма, которые делают это возможным.
+</KnowledgeCheck>

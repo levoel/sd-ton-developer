@@ -1,0 +1,138 @@
+---
+title: "Мониторинг и Production Operations"
+description: "Observability, monitoring, и operational practices для TON production систем"
+order: 1
+difficulty: "advanced"
+estimatedTime: 18
+topics: ["Monitoring", "Observability", "Indexing", "Alerts", "Incident Response"]
+---
+
+# Production Operations для TON
+
+## Observability Stack
+
+<DiagramContainer title="TON Production Observability Stack" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <Tooltip content="On-chain events: transactions, messages, state changes">
+      <DataBox label="Data Sources" className="border-blue-500/30">
+        <div className="text-xs">On-chain: tx, messages, state | Off-chain: API logs, errors</div>
+      </DataBox>
+    </Tooltip>
+    <Arrow direction="down" />
+    <FlowRow className="gap-3 justify-center">
+      <Tooltip content="TON Indexer: парсит блоки и индексирует транзакции">
+        <DataBox label="Indexer" className="border-emerald-500/30 w-36">
+          <div className="text-xs">tonapi, toncenter</div>
+        </DataBox>
+      </Tooltip>
+      <Tooltip content="Metrics: Prometheus/Grafana для метрик">
+        <DataBox label="Metrics" className="border-purple-500/30 w-36">
+          <div className="text-xs">Prometheus + Grafana</div>
+        </DataBox>
+      </Tooltip>
+      <Tooltip content="Alerts: PagerDuty/Slack для уведомлений">
+        <DataBox label="Alerts" className="border-red-500/30 w-36">
+          <div className="text-xs">PagerDuty, Slack</div>
+        </DataBox>
+      </Tooltip>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+## Key Metrics для TON Systems
+
+### Contract Health
+
+| Metric | Description | Alert Threshold |
+|--------|------------|----------------|
+| **Contract balance** | TON balance for storage/gas | < 1 TON (low balance) |
+| **Tx throughput** | Transactions per minute | Sudden drop (system issue) |
+| **Bounce rate** | % of bounced messages | > 5% (error in flows) |
+| **Gas usage** | Average gas per tx type | > 2x baseline (regression) |
+| **State size** | Cells count in contract state | Growing unbounded |
+
+### DeFi Metrics
+
+| Metric | Description | Alert |
+|--------|------------|-------|
+| **TVL** | Total Value Locked | Drop > 10% in 1 hour |
+| **Pool reserves ratio** | reserve_a / reserve_b | Deviation from expected |
+| **Swap volume** | Daily swap volume | Anomaly detection |
+| **Health factors** | Min health factor across positions | < 1.2 (approaching liquidation) |
+| **Oracle staleness** | Time since last price update | > 5 minutes |
+
+## Indexing & Event Tracking
+
+### On-chain Event Tracking
+
+```
+TON events: emit log messages (external out messages)
+
+Contract emits:
+  send_raw_message(beginCell()
+    .storeUint(0, 2)  // external out message
+    .storeUint(op::swap_event, 32)
+    .storeUint(query_id, 64)
+    .storeCoins(amount_in)
+    .storeCoins(amount_out)
+    .storeAddress(user)
+    .endCell(), 0);
+
+Indexer picks up external messages → stores in DB → powers:
+  - Analytics dashboards
+  - Transaction history API
+  - Alert triggers
+```
+
+## Incident Response
+
+### Runbook Template
+
+```
+Incident: [Contract Balance Low]
+Severity: P1 (Critical)
+On-call: @defi-team
+
+Steps:
+1. Verify: check contract balance via tonapi
+2. Assess: is contract at risk of freeze?
+3. Immediate: top-up contract via admin multisig
+4. Root cause: why balance dropped?
+   - Increased storage (unbounded growth?)
+   - High gas usage (new feature?)
+   - Missing fee collection?
+5. Fix: address root cause
+6. Post-mortem: document and preventive action
+```
+
+### Emergency Actions
+
+```
+Emergency Pause:
+  Admin → Contract: set_paused(true)
+  Contract: reject all non-admin messages when paused
+  
+  Use when: security vulnerability discovered, anomalous behavior
+
+Emergency Upgrade:
+  Admin → Contract: set_code(patched_code)
+  Immediate effect, no timelock
+  
+  Use when: critical vulnerability, active exploit
+  
+  [WARN] Emergency upgrade = trust in admin
+  → Post-emergency: audit + post-mortem required
+```
+
+## Deployment Checklist
+
+| Phase | Checks |
+|-------|--------|
+| **Pre-deploy** | Audit complete, testnet verified, gas estimates correct |
+| **Deploy** | Contract deployed, initial state verified, admin set |
+| **Post-deploy** | Monitoring active, alerts configured, balance sufficient |
+| **Operational** | Regular balance top-up, metric review, upgrade planning |
+
+<KnowledgeCheck>
+Production operations: indexing (track on-chain events), monitoring (contract health + DeFi metrics), alerting (PagerDuty for critical), incident response (runbooks + emergency actions). Observability is not optional — it's how you know your system works. Deploy checklist ensures nothing is missed.
+</KnowledgeCheck>

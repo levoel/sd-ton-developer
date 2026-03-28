@@ -1,0 +1,128 @@
+{
+  "lessonSlug": "03-actor-model/_exam",
+  "moduleId": "03-actor-model",
+  "examTitle": "Экзамен: Actor Model и асинхронные сообщения",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdton-m03-exam"
+  },
+  "questions": [
+    {
+      "id": "sdton-m03-exam-q1",
+      "type": "multiple-choice",
+      "question": "Вы проектируете multi-sig кошелёк на TON. 3 из 5 подписантов должны подтвердить транзакцию. Каждый подтверждающий отправляет internal message. Какой design pattern использовать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Event Sourcing — записать все подтверждения и replay"
+        },
+        {
+          "id": "b",
+          "text": "Saga — каждый подписант выполняет свою часть транзакции"
+        },
+        {
+          "id": "c",
+          "text": "Fan-in + counter + state machine: контракт принимает confirmation messages, инкрементирует counter. При counter ≥ 3 → execute transaction. Timeout для abandoned proposals"
+        },
+        {
+          "id": "d",
+          "text": "CQRS — разделить подтверждение и исполнение на разные контракты"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите урок 5: Fan-out/Fan-in — counter pattern и урок 4: State Machines",
+      "explanation": "Multi-sig = fan-in pattern: N подписантов → 1 контракт. Counter отслеживает: confirmation_count. State machine: PENDING → (при count >= threshold) → EXECUTING → COMPLETED. Timeout: если threshold не набран за N блоков → EXPIRED. Каждый confirmation message проверяет sender в списке authorized signers.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m03-exam-q2",
+      "type": "multiple-choice",
+      "question": "DEX swap: User → DEX → отправить Token B. На шаге отправки Token B произошёл bounce (недостаточно gas на Receiver Wallet). DEX получает bounce. Какой правильный порядок действий?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Игнорировать bounce — User потерял Token A, это его проблема"
+        },
+        {
+          "id": "b",
+          "text": "Остановить DEX и ждать admin"
+        },
+        {
+          "id": "c",
+          "text": "Попробовать отправить Token B повторно с тем же gas"
+        },
+        {
+          "id": "d",
+          "text": "Обработать bounce → перейти в state REFUNDING → отправить Token A обратно User → вернуться в IDLE"
+        }
+      ],
+      "correctAnswer": "d",
+      "studyHint": "Повторите урок 3: Bounce Handling — compensation strategy и урок 4: State Machines — bounce из любого state",
+      "explanation": "Saga compensation: при bounce на шаге N — компенсировать шаги N-1...1. DEX получает bounce → state = REFUNDING → отправляет Token A обратно User → state = IDLE. Повторная отправка с тем же gas (вариант c) бессмысленна — проблема не в gas, а в получателе.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m03-exam-q3",
+      "type": "multiple-choice",
+      "question": "Governance контракт отправляет результаты голосования 1000 участникам (fan-out). Через 5 минут 800 participants получили результат, 200 — нет (их контракты в перегруженных шардах). Как улучшить design?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Вместо push-модели (отправить каждому) → pull-модель: записать результат в governance contract, участники сами вызывают get-method. Экономия: 1000 messages → 0 messages"
+        },
+        {
+          "id": "b",
+          "text": "Увеличить gas для всех сообщений"
+        },
+        {
+          "id": "c",
+          "text": "Ждать пока все 1000 получат"
+        },
+        {
+          "id": "d",
+          "text": "Отправить повторно тем 200, кто не получил"
+        }
+      ],
+      "correctAnswer": "a",
+      "studyHint": "Повторите урок 5: Parallel Messages — rule: минимизируйте fan-out, pull vs push",
+      "explanation": "Pull vs Push: вместо 1000 push messages (дорого, ненадёжно) — записать результат в state governance контракта. Участники вызывают get-method (бесплатно, мгновенно). Для on-chain notification — emit log event, который off-chain indexers подхватят. Это экономит ~10+ TON на gas.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m03-exam-q4",
+      "type": "multiple-choice",
+      "question": "Контракт Lending Pool имеет states: IDLE, DEPOSITING, BORROWING, LIQUIDATING. При получении bounce в состоянии BORROWING — что должен сделать bounce handler?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Перейти в IDLE без действий"
+        },
+        {
+          "id": "b",
+          "text": "Перейти в compensation state → вернуть collateral depositor-у → обновить pool balances → IDLE"
+        },
+        {
+          "id": "c",
+          "text": "Повторить borrow request"
+        },
+        {
+          "id": "d",
+          "text": "Заблокировать контракт навсегда"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите урок 4: State Machines — Rule 4: bounce из любого state и урок 3: Recovery strategies",
+      "explanation": "BORROWING + bounce = borrow failed. Compensation: вернуть collateral (который уже был locked в DEPOSITING state), обновить pool balances (total_borrowed -= amount), перейти в IDLE. Без compensation — collateral locked навсегда, пользователь потерял средства.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m03-exam-q5",
+      "type": "true-false",
+      "question": "На TON контракт может обработать два входящих сообщения параллельно в одной транзакции, если оба пришли из одного шарда.",
+      "correctAnswer": false,
+      "explanation": "Нет. Actor Model гарантирует: один контракт обрабатывает одно сообщение за транзакцию. Даже если оба сообщения в одном шарде — они обрабатываются последовательно: message_1 → transaction_1, message_2 → transaction_2. Это inherent guarantee Actor Model, обеспечивающая отсутствие race conditions.",
+      "studyHint": "Повторите урок 1: Actor Model — гарантия sequential message processing",
+      "bloomLevel": "conceptual"
+    }
+  ]
+}

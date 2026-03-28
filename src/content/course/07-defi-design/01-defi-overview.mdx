@@ -1,0 +1,239 @@
+---
+title: "DeFi на TON: обзор и архитектурные паттерны"
+description: "Обзор DeFi экосистемы TON и ключевые архитектурные решения для DeFi протоколов"
+order: 1
+difficulty: "advanced"
+estimatedTime: 20
+topics: ["DeFi", "AMM", "DEX", "Lending", "Staking", "Architecture"]
+---
+
+# DeFi System Design на TON
+
+## DeFi экосистема TON (2026)
+
+TON DeFi экосистема активно развивается. Ключевые протоколы:
+
+<DiagramContainer title="TON DeFi Ecosystem (2026)" className="my-6">
+  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-4">
+    <Tooltip content="STON.fi и DeDust — два основных AMM DEX на TON">
+      <DataBox label="DEX" className="border-blue-500/30">
+        <div className="text-xs">STON.fi, DeDust</div>
+        <div className="text-[10px] text-slate-400">AMM pools, routing</div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="EVAA — основной lending protocol на TON">
+      <DataBox label="Lending" className="border-emerald-500/30">
+        <div className="text-xs">EVAA Protocol</div>
+        <div className="text-[10px] text-slate-400">Supply, borrow, liquidate</div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Liquid staking: tsTON, stTON — стейкинг с ликвидным токеном">
+      <DataBox label="Liquid Staking" className="border-purple-500/30">
+        <div className="text-xs">tsTON, stTON</div>
+        <div className="text-[10px] text-slate-400">~4.5-5% APY</div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Мосты для cross-chain transfers: TONEthereum, TONBSC">
+      <DataBox label="Bridges" className="border-orange-500/30">
+        <div className="text-xs">TON Bridge</div>
+        <div className="text-[10px] text-slate-400">Cross-chain assets</div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="USDt на TON — крупнейший stablecoin с $1.4B circulation">
+      <DataBox label="Stablecoins" className="border-yellow-500/30">
+        <div className="text-xs">USDt on TON</div>
+        <div className="text-[10px] text-slate-400">$1.4B+ circulation</div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Yield aggregators и vault strategies">
+      <DataBox label="Yield" className="border-red-500/30">
+        <div className="text-xs">Yield protocols</div>
+        <div className="text-[10px] text-slate-400">Aggregated strategies</div>
+      </DataBox>
+    </Tooltip>
+  </div>
+</DiagramContainer>
+
+## Ключевые отличия DeFi на TON vs Ethereum
+
+| Аспект | Ethereum DeFi | TON DeFi |
+|--------|-------------|---------|
+| **Composability** | Синхронная (flash loans, chained calls) | Асинхронная (message chains) |
+| **Flash loans** | Возможны | **Невозможны** (нет atomic cross-contract) |
+| **MEV** | Значительный (front-running, sandwich) | Минимальный (async messages) |
+| **Gas model** | Пользователь платит за всё | Forward gas + excess return |
+| **Token standard** | ERC-20 (монолитный) | Jetton (sharded) |
+| **Liquidity fragmentation** | L2 проблема | Нет L2 → единый liquidity pool |
+
+<Callout type="note">
+**Flash loans невозможны на TON — это feature, не bug**
+
+Flash loans на Ethereum позволяют взять кредит, использовать и вернуть в одной транзакции. На TON каждый вызов контракта — отдельная транзакция. Нет атомарности → нет flash loans. Это снижает attack surface (flash loan attacks — один из главных exploit vectors в Ethereum DeFi).
+</Callout>
+
+## AMM DEX Architecture на TON
+
+### Constant Product Formula
+
+```
+x × y = k
+
+Где:
+  x = reserve Token A в pool
+  y = reserve Token B в pool
+  k = constant product (не меняется при swaps)
+
+Swap: отдать dx Token A → получить dy Token B
+  (x + dx) × (y - dy) = k
+  dy = y × dx / (x + dx)
+```
+
+### TON DEX Architecture (STON.fi style)
+
+<DiagramContainer title="AMM DEX Architecture на TON" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <div className="flex justify-center">
+      <Tooltip content="Router: factory для pools, маршрутизация multi-hop swaps">
+        <DataBox label="Router" className="border-blue-500/30 w-56">
+          <div className="text-xs">Factory + routing logic</div>
+        </DataBox>
+      </Tooltip>
+    </div>
+    <FlowRow className="gap-4 justify-center">
+      <Arrow direction="down" />
+      <Arrow direction="down" />
+    </FlowRow>
+    <FlowRow className="gap-4 justify-center">
+      <Tooltip content="Pool TON/USDT: хранит reserves обоих токенов, AMM formula">
+        <DataBox label="Pool: TON/USDT" className="border-emerald-500/30 w-44">
+          <div className="text-xs space-y-1">
+            <div>reserve_TON: 100,000</div>
+            <div>reserve_USDT: 150,000</div>
+            <div>fee: 0.3%</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+      <Tooltip content="Pool TON/STON: другая торговая пара">
+        <DataBox label="Pool: TON/STON" className="border-emerald-500/30 w-44">
+          <div className="text-xs space-y-1">
+            <div>reserve_TON: 50,000</div>
+            <div>reserve_STON: 1,000,000</div>
+            <div>fee: 0.3%</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+    </FlowRow>
+    <FlowRow className="gap-2 justify-center">
+      <Arrow direction="down" />
+      <Arrow direction="down" />
+    </FlowRow>
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <Tooltip content="LP Wallet: per-provider liquidity position (sharded)">
+        <DataBox label="LP Wallet Alice" className="border-orange-500/30 w-32">
+          <div className="text-[10px]">lp_amount: 1,000</div>
+        </DataBox>
+      </Tooltip>
+      <DataBox label="LP Wallet Bob" className="border-orange-500/30 w-32">
+        <div className="text-[10px]">lp_amount: 500</div>
+      </DataBox>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+### Swap Message Flow
+
+```
+DEX Swap: User wants to swap 100 USDT → TON
+
+1. User → User's USDT Wallet: transfer(100, pool_address, swap_payload)
+2. User's USDT Wallet → Pool's USDT Wallet: internal_transfer(100)
+3. Pool's USDT Wallet → Pool: transfer_notification(100, user)
+4. Pool: calculate output = 100 × reserve_TON / (reserve_USDT + 100) × (1 - fee)
+5. Pool → User: send TON (direct, not Jetton) + excess gas
+
+Messages: 4-5 hops
+Total time: ~15-25 sec (cross-shard)
+Gas: ~0.05 TON (excess returned)
+```
+
+## Lending Protocol Architecture
+
+### Core Components
+
+```
+Lending System:
+├── Market Controller (master)
+│   ├── Supported assets list
+│   ├── Interest rate parameters
+│   ├── Liquidation thresholds
+│   └── Oracle price feeds
+├── Supply Pool (per asset)
+│   ├── Total supplied
+│   ├── Total borrowed
+│   ├── Interest rate model
+│   └── Utilization ratio
+├── User Position (per user, sharded)
+│   ├── Collateral deposits
+│   ├── Borrow amounts
+│   ├── Health factor
+│   └── Accrued interest
+└── Liquidation Bot (off-chain)
+    ├── Monitor health factors
+    ├── Trigger liquidation tx
+    └── Claim liquidation bonus
+```
+
+### Liquidation Flow
+
+```
+Liquidation (health_factor < 1.0):
+
+1. Off-chain bot detects: user_position.health_factor < 1.0
+2. Bot → Market: "liquidate(user, collateral_asset, debt_asset, amount)"
+3. Market → User Position: verify health_factor < 1.0
+4. User Position → Debt Pool: "repay(amount)" (from liquidator's funds)
+5. User Position → Collateral Pool: "release(collateral × (1 + bonus))"
+6. Collateral → Liquidator: receive collateral with bonus
+
+Key design: liquidation must be profitable for bot (bonus 5-15%)
+Otherwise nobody liquidates → protocol becomes insolvent
+```
+
+## Staking Pool Architecture
+
+```
+Liquid Staking (stTON/tsTON):
+
+User deposits 100 TON →
+Pool mints 95 stTON (exchange rate includes accrued rewards) →
+Pool stakes TON with validator →
+Validator earns rewards →
+Exchange rate: stTON/TON increases over time
+
+Unstake:
+User burns 95 stTON →
+Pool calculates: 95 × current_rate = 102 TON (with accumulated rewards) →
+Pool unstakes from validator (unbonding period) →
+User receives 102 TON
+```
+
+<Callout type="tip">
+**Design Pattern: Exchange Rate Token**
+
+Liquid staking tokens (stTON) используют **exchange rate** вместо rebase. 1 stTON ≠ 1 TON — rate растёт со временем. Это проще для интеграций (DeFi, wallets) чем rebase-токены (которые меняют balance).
+</Callout>
+
+## Design Checklist для DeFi на TON
+
+| Аспект | Проверка |
+|--------|---------|
+| **Async safety** | Все multi-step операции имеют bounce handlers и timeouts? |
+| **Slippage** | Min output amount проверяется? Refund при slippage > tolerance? |
+| **Reentrancy** | Не применимо на TON (Actor Model), но race conditions в state machine? |
+| **Oracle** | Price feed актуален? Staleness check? Fallback oracle? |
+| **Liquidation** | Profitable для liquidators? Dust amounts handled? |
+| **Gas** | Gas budget для worst-case message chain? Excess returned? |
+
+<KnowledgeCheck>
+DeFi на TON — это async DeFi: message chains вместо synchronous calls, bounce handlers вместо try/catch, state machines вместо monolithic functions. Flash loans невозможны (feature), MEV минимален (feature), composability через message chains (challenge). В следующих уроках разберём каждый DeFi примитив в деталях.
+</KnowledgeCheck>

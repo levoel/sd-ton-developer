@@ -1,0 +1,35 @@
+{
+  "lessonSlug": "12-production-ops/01-production-operations",
+  "moduleId": "12-production-ops",
+  "_meta": {
+    "idPrefix": "sdton-m12-01"
+  },
+  "questions": [
+    {
+      "id": "sdton-m12-01-q1",
+      "type": "multiple-choice",
+      "question": "Какой metric наиболее критичен для мониторинга TON smart contract в production?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Contract balance — если упадёт до нуля, контракт freeze и перестанет обрабатывать сообщения. Все остальные metrics вторичны если контракт frozen"
+        },
+        {
+          "id": "b",
+          "text": "CPU usage валидатора"
+        },
+        {
+          "id": "c",
+          "text": "Number of deployments per day"
+        },
+        {
+          "id": "d",
+          "text": "Code size контракта"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Contract balance = #1 health metric. Storage fee списывается каждый блок. Balance → 0 = freeze = all operations stop = user funds locked. Alert on low balance (< 1 TON), auto-top-up from treasury, and size reduction to minimize fee. CPU and code size are validator concerns, not contract owner concerns.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

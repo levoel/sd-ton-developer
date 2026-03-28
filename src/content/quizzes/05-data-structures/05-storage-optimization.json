@@ -1,0 +1,43 @@
+{
+  "lessonSlug": "05-data-structures/05-storage-optimization",
+  "moduleId": "05-data-structures",
+  "_meta": {
+    "idPrefix": "sdton-m05-05"
+  },
+  "questions": [
+    {
+      "id": "sdton-m05-05-q1",
+      "type": "multiple-choice",
+      "question": "Контракт имеет 1M cells в state. Annual storage fee ~4 TON. Какая техника даст наибольшую экономию?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Использовать uint256 вместо Grams для coin amounts"
+        },
+        {
+          "id": "b",
+          "text": "Увеличить баланс контракта"
+        },
+        {
+          "id": "c",
+          "text": "Переключиться на другой workchain"
+        },
+        {
+          "id": "d",
+          "text": "Cleanup expired entries + sharding: удалить неактивные данные (reduce cells), переместить per-user state в child contracts (distribute fee)"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "Два наиболее эффективных подхода: 1) Cleanup — удаление expired/inactive entries напрямую уменьшает cells_count → меньше fee. 2) Sharding — перемещение per-user state в child contracts распределяет storage fee (каждый user платит за свой state). Увеличение баланса (d) не уменьшает fee, а лишь отсрочивает freeze.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m05-05-q2",
+      "type": "true-false",
+      "question": "В sharded design (Master + N child contracts), code child контрактов с одинаковым hash дедуплицируется TON — физически хранится одна cell, а не N копий.",
+      "correctAnswer": true,
+      "explanation": "Верно. TON дедуплицирует cells с одинаковым hash. Все child contracts с одинаковым code ссылаются на одну физическую cell. Storage fee за code платится один раз, не N раз. Это делает factory pattern (Jetton, NFT) экономичным — 1 миллион child contracts не значит 1 миллион копий code.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

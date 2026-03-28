@@ -1,0 +1,61 @@
+{
+  "lessonSlug": "02-ton-architecture/04-ton-vs-eth-sol",
+  "moduleId": "02-ton-architecture",
+  "_meta": {
+    "idPrefix": "sdton-m02-04"
+  },
+  "questions": [
+    {
+      "id": "sdton-m02-04-q1",
+      "type": "multiple-choice",
+      "question": "Почему flash loans невозможны на TON, хотя возможны на Ethereum?",
+      "options": [
+        {
+          "id": "a",
+          "text": "На TON контракты общаются через async messages — нет атомарности между контрактами в одной транзакции. Flash loan требует: взять кредит → использовать → вернуть — всё в одной атомарной транзакции"
+        },
+        {
+          "id": "b",
+          "text": "TON не поддерживает lending protocols"
+        },
+        {
+          "id": "c",
+          "text": "Flash loans запрещены в TON governance"
+        },
+        {
+          "id": "d",
+          "text": "Gas на TON слишком высок для flash loans"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Flash loan на Ethereum: одна транзакция вызывает lending contract → получает средства → использует → возвращает. Если не возвращено — вся транзакция откатывается. На TON каждый вызов — async message в отдельной транзакции. Нет атомарного rollback across contracts. Это design trade-off: async = лучше scaling, но нет composability Ethereum-уровня.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m02-04-q2",
+      "type": "multiple-choice",
+      "question": "Вы проектируете consumer app с 10M+ пользователей. Какой L1 оптимален по совокупности факторов?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Ethereum L1 — максимальная decentralization"
+        },
+        {
+          "id": "b",
+          "text": "TON — Telegram distribution (950M users), low fees ($0.007), high throughput, dynamic sharding для 10M+ users"
+        },
+        {
+          "id": "c",
+          "text": "Solana — максимальная скорость (400ms finality)"
+        },
+        {
+          "id": "d",
+          "text": "Все равноценны для consumer apps"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Для consumer app с 10M+ пользователей TON оптимален: 1) Telegram distribution = instant access к 950M users, 2) Low fees ($0.007) = доступно для micropayments, 3) Dynamic sharding = масштабирование L1 без L2 complexity, 4) Mini Apps = native UX в Telegram. Ethereum L1 слишком дорог ($0.50-50), Solana не имеет Telegram distribution.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

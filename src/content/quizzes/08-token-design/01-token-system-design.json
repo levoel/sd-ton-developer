@@ -1,0 +1,43 @@
+{
+  "lessonSlug": "08-token-design/01-token-system-design",
+  "moduleId": "08-token-design",
+  "_meta": {
+    "idPrefix": "sdton-m08-01"
+  },
+  "questions": [
+    {
+      "id": "sdton-m08-01-q1",
+      "type": "multiple-choice",
+      "question": "Вы хотите создать governance token с delegation (user может делегировать voting power другому адресу). Какой подход оптимален?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Стандартный Jetton без изменений — delegation через off-chain signaling"
+        },
+        {
+          "id": "b",
+          "text": "Delegation невозможна на TON"
+        },
+        {
+          "id": "c",
+          "text": "Отдельный delegation контракт, не связанный с токеном"
+        },
+        {
+          "id": "d",
+          "text": "Custom Jetton: wallet contract расширен полем delegated_to + locked_until. При голосовании Proposal верифицирует balance + delegation через wallet get-method"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "Custom Jetton wallet с delegation: каждый wallet хранит delegated_to (кому делегирован vote) и locked_until (блокировка transfer во время голосования). Proposal contract проверяет balance и delegation status через deterministic address verification + get-method. Standard Jetton не поддерживает delegation out-of-box.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m08-01-q2",
+      "type": "true-false",
+      "question": "Royalty при перепродаже NFT на TON enforceable on-chain — marketplace НЕ МОЖЕТ обойти royalty payment.",
+      "correctAnswer": false,
+      "explanation": "Royalty params хранятся в Collection contract, marketplace SHOULD enforce royalty, но технически может обойти (peer-to-peer transfer без marketplace = 0 royalty). Это та же проблема, что на Ethereum — on-chain enforcement без marketplace cooperation невозможен. Решение: trusted marketplaces + social enforcement.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "lessonSlug": "05-data-structures/02-boc-serialization",
+  "moduleId": "05-data-structures",
+  "_meta": {
+    "idPrefix": "sdton-m05-02"
+  },
+  "questions": [
+    {
+      "id": "sdton-m05-02-q1",
+      "type": "multiple-choice",
+      "question": "Разработчик хранит поле status как uint256, хотя значения только 0-5. Почему это плохо для TON?",
+      "options": [
+        {
+          "id": "a",
+          "text": "uint256 не поддерживается в TVM"
+        },
+        {
+          "id": "b",
+          "text": "Это нормально — оптимизация не важна"
+        },
+        {
+          "id": "c",
+          "text": "uint256 работает медленнее uint3"
+        },
+        {
+          "id": "d",
+          "text": "256 бит вместо 3 бит → тратит 253 лишних бита. Это увеличивает BoC size → больше forward fee для сообщений, больше storage fee для state"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "На TON каждый бит стоит денег: forward fee пропорционально размеру BoC в сообщении, storage fee пропорционально размеру state. 253 лишних бита × 1000 контрактов = 253,000 лишних бит = ~31 KB waste → реальные деньги на fees.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

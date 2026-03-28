@@ -1,0 +1,148 @@
+---
+title: "Принципы Sharding-Friendly Design"
+description: "Как проектировать контракты, дружественные к динамическому шардированию TON"
+order: 1
+difficulty: "intermediate"
+estimatedTime: 20
+topics: ["Sharding", "Contract Design", "Scalability", "Parallel Processing"]
+---
+
+# Принципы Sharding-Friendly Design
+
+## Главный принцип: 1 аккаунт = 1 потенциальный шард
+
+TON шардирует на уровне **аккаунтов** (контрактов), не внутри контракта. Один контракт = один аккаунт = обработка в одном шарде = **последовательно**. Чтобы использовать параллелизм TON, нужно **разбить state на несколько контрактов**.
+
+```
+[NO] Монолит: всё в одном контракте
+TokenContract {
+  balances: Map<Address, Int>  // 1M entries = 1 shard = bottleneck
+}
+
+[OK] Sharded: state распределён
+MasterContract { total_supply, metadata }
+WalletContract_1 { balance: 100 }   // свой шард
+WalletContract_2 { balance: 200 }   // свой шард  
+WalletContract_N { balance: 50 }    // свой шард
+```
+
+<DiagramContainer title="Монолит vs Sharded Contract Design" className="my-6">
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4">
+    <Tooltip content="Монолитный контракт: все операции в одном шарде, последовательная обработка">
+      <DataBox label="Монолит" className="border-red-500/30">
+        <div className="text-xs space-y-1">
+          <div>1 контракт → 1 шард</div>
+          <div>1M users → все ждут в очереди</div>
+          <div>Storage fee за всю map</div>
+          <div className="text-red-400 mt-1">TPS = throughput одного шарда</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Sharded: каждый user-контракт в своём шарде, параллельная обработка">
+      <DataBox label="Sharded" className="border-emerald-500/30">
+        <div className="text-xs space-y-1">
+          <div>N контрактов → N потенциальных шардов</div>
+          <div>1M users → параллельная обработка</div>
+          <div>Storage fee распределена</div>
+          <div className="text-emerald-400 mt-1">TPS = N × throughput шарда</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+  </div>
+</DiagramContainer>
+
+## 5 принципов Sharding-Friendly Design
+
+### Принцип 1: Разделяй state по ownership
+
+Каждый пользователь владеет своей частью state → каждая часть в отдельном контракте:
+
+| Домен | State | Sharded Design |
+|-------|-------|---------------|
+| Token | Балансы | Master + Wallet per user |
+| NFT | Ownership | Collection + Item per NFT |
+| DEX | LP positions | Pool + LP Wallet per provider |
+| Lending | Deposits | Pool + Position per borrower |
+
+### Принцип 2: Минимизируй shared state
+
+Shared state (данные, нужные всем) держи минимальным:
+
+```
+Master Contract (shared state — минимум):
+  total_supply: Int
+  admin: Address
+  metadata_url: String
+
+Wallet Contract (per-user state — всё остальное):
+  owner: Address
+  balance: Int
+  pending_transfers: Map
+```
+
+### Принцип 3: Deterministic address computation
+
+Адрес дочернего контракта должен быть **вычислим** без on-chain запроса:
+
+```javascript
+// Адрес Jetton Wallet для конкретного owner вычислим:
+wallet_address = hash(wallet_code + initial_data(owner, master))
+
+// Это означает:
+// 1. Любой может узнать адрес wallet-а зная owner и master
+// 2. Не нужен on-chain lookup (экономия gas)
+// 3. Master может проверить "этот wallet мой?" без хранения списка
+```
+
+### Принцип 4: Авторизация через code hash
+
+Как Master проверяет, что входящее сообщение от **легитимного** child-контракта?
+
+```
+Verification pattern:
+1. Master знает wallet_code (bytecode child-контракта)
+2. Получает сообщение от sender_address
+3. Вычисляет: expected_address = hash(wallet_code + init_data(claimed_owner))
+4. Проверяет: sender_address == expected_address?
+5. Если да — sender является легитимным wallet для claimed_owner
+```
+
+<Callout type="tip">
+**Это security pattern, не просто optimization**
+
+Deterministic address + code hash verification — это способ контрактов доверять друг другу без хранения whitelist-ов. Master не хранит список всех wallet-адресов (экономия storage), но может проверить любой за O(1).
+</Callout>
+
+### Принцип 5: Idempotent child operations
+
+Операции в child-контрактах должны быть идемпотентными — повторный вызов даёт тот же результат:
+
+```
+[OK] Idempotent:
+set_balance(100)  // результат всегда balance=100
+
+[NO] Not idempotent:
+add_balance(50)   // первый раз: 100→150, второй: 150→200
+                  // replay = double credit!
+```
+
+## Когда НЕ шардировать
+
+Sharding — не silver bullet. Trade-offs:
+
+| Шардировать | Не шардировать |
+|------------|---------------|
+| 1000+ пользователей | < 100 пользователей |
+| High throughput нужен | Throughput не bottleneck |
+| Hot path (DEX, transfers) | Cold path (governance, admin) |
+| Data per user | Global config, metadata |
+
+<Callout type="warning">
+**Oversharding = overengineering**
+
+DAO governance с 50 участниками не нужно шардировать — один контракт обработает все голоса. Шардирование добавляет complexity: больше сообщений, сложнее debug, больше gas на cross-contract communication.
+</Callout>
+
+<KnowledgeCheck>
+Sharding-friendly design — это не о шардах, а о **изоляции state**. Каждый пользователь = свой контракт = свой потенциальный шард. Deterministic addresses, code hash verification и idempotent operations — три инструмента, которые делают это безопасным. В следующем уроке: Jetton pattern — эталонная реализация sharded token.
+</KnowledgeCheck>

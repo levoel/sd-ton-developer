@@ -1,0 +1,184 @@
+---
+title: "Token System Design: Jetton 2.0, NFT, SBT"
+description: "Проектирование токен-систем на TON: стандарты, архитектурные паттерны и best practices"
+order: 1
+difficulty: "advanced"
+estimatedTime: 20
+topics: ["Jetton", "NFT", "SBT", "Token Standards", "Token Economics"]
+---
+
+# Token System Design
+
+## Три стандарта токенов на TON
+
+<DiagramContainer title="Стандарты токенов на TON" className="my-6">
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4">
+    <Tooltip content="Fungible token (аналог ERC-20). Sharded: Master + Wallet per holder.">
+      <DataBox label="Jetton (Fungible)" className="border-blue-500/30">
+        <div className="text-xs space-y-1">
+          <div>Аналог: ERC-20</div>
+          <div>Pattern: Master + Wallet</div>
+          <div>Use: стейблкоины, governance, utility</div>
+          <div className="text-blue-400 mt-1">TEP-74 / Jetton 2.0</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Non-fungible token (аналог ERC-721). Sharded: Collection + Item per NFT.">
+      <DataBox label="NFT (Non-Fungible)" className="border-purple-500/30">
+        <div className="text-xs space-y-1">
+          <div>Аналог: ERC-721</div>
+          <div>Pattern: Collection + Item</div>
+          <div>Use: art, gaming, domains</div>
+          <div className="text-purple-400 mt-1">TEP-62</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Soulbound Token — не-передаваемый NFT. Для credentials, reputation, KYC.">
+      <DataBox label="SBT (Soulbound)" className="border-emerald-500/30">
+        <div className="text-xs space-y-1">
+          <div>Аналог: ERC-5192</div>
+          <div>Pattern: Collection + Item (no transfer)</div>
+          <div>Use: credentials, KYC, reputation</div>
+          <div className="text-emerald-400 mt-1">TEP-85</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+  </div>
+</DiagramContainer>
+
+## Проектирование Custom Jetton
+
+### Когда использовать стандартный Jetton vs custom
+
+| Сценарий | Стандартный Jetton | Custom Jetton |
+|----------|-------------------|---------------|
+| Простой transfer token | Да | Overkill |
+| Token с fees on transfer | Нет | Да Custom transfer logic |
+| Rebase token (elastic supply) | Нет | Да Custom balance logic |
+| Token с vesting | Нет | Да Lock/unlock in wallet |
+| Governance token + voting | Нет | Да Snapshot + delegation |
+
+### Custom Jetton Architecture: Governance Token
+
+```
+Governance Jetton:
+├── Master Contract
+│   ├── total_supply, admin, metadata
+│   ├── proposal_count, voting_config
+│   └── create_proposal(), finalize_proposal()
+├── Wallet Contract (per holder)
+│   ├── balance, owner
+│   ├── delegated_to: Address (vote delegation)
+│   ├── locked_until: uint32 (voting lock)
+│   └── transfer() — blocked if locked_until > now()
+└── Proposal Contract (per proposal)
+    ├── votes_for, votes_against, deadline
+    ├── status: active/passed/rejected
+    └── vote() — checks balance via wallet verification
+```
+
+## NFT Collection Design
+
+### Metadata Standards
+
+```
+On-chain NFT Item state:
+  index: uint64              // 0, 1, 2, ...
+  collection: MsgAddress     // parent collection
+  owner: MsgAddress          // current owner
+  content: ^Cell             // metadata reference
+
+Off-chain metadata (JSON):
+{
+  "name": "Cool Cat #42",
+  "description": "A very cool cat",
+  "image": "ipfs://QmX.../42.png",
+  "attributes": [
+    {"trait_type": "Background", "value": "Blue"},
+    {"trait_type": "Fur", "value": "Golden"}
+  ]
+}
+```
+
+### Royalty Design
+
+TON NFT стандарт включает royalty:
+
+```
+Royalty Flow:
+1. NFT sold on marketplace (price: 100 TON)
+2. Marketplace checks: royalty_params from Collection
+3. Royalty: 5% = 5 TON → creator_address
+4. Marketplace fee: 2% = 2 TON → marketplace
+5. Seller receives: 93 TON
+
+Design decision:
+  Royalty on-chain (enforced) vs off-chain (optional)
+  TON: royalty params stored in Collection contract
+  Marketplace SHOULD enforce, but technically can ignore
+  → Similar to Ethereum debate (enforced royalty is hard)
+```
+
+## SBT Design Patterns
+
+### Use Case 1: KYC Token
+
+```
+KYC SBT:
+  Issuer: KYC provider (verified entity)
+  Holder: verified user
+  Data: 
+    verified_level: uint8 (1=basic, 2=enhanced, 3=institutional)
+    country_code: uint16
+    expiry: uint32
+    
+  Transfer: BLOCKED (soulbound)
+  Revoke: issuer can revoke (set status=revoked)
+  Verify: any contract can check KYC status via get-method
+```
+
+### Use Case 2: Achievement Badges
+
+```
+Achievement SBT:
+  Collection: "TON Developer Achievements"
+  Items:
+    - "First Contract Deployed" (auto-mint on first deploy)
+    - "1000 Transactions" (auto-mint at milestone)
+    - "Hackathon Winner" (manually issued)
+    
+  Design: items are auto-minted by trigger contracts
+  No transfer: badges are earned, not bought
+```
+
+## Token Economics Design
+
+### Supply Models
+
+| Model | Description | Use Case |
+|-------|------------|----------|
+| **Fixed supply** | Total supply set at creation | Bitcoin, governance tokens |
+| **Inflationary** | New tokens minted over time | Staking rewards, validator incentives |
+| **Deflationary** | Tokens burned on usage | Fee-burn mechanics |
+| **Elastic** | Supply adjusts to target price | Algorithmic stablecoins |
+
+### Fee Distribution
+
+```
+Protocol Fee Distribution Design:
+
+Swap fee: 0.3% per trade
+├── 0.25% → LP providers (proportional to LP tokens)
+├── 0.04% → Protocol treasury
+└── 0.01% → Referral program
+
+Implementation:
+  Pool contract accumulates fees in reserves
+  LP providers claim proportional share at withdrawal
+  Protocol fee → separate treasury contract (periodic withdrawal)
+  Referral → tracked per-user, claimable via referral contract
+```
+
+<KnowledgeCheck>
+Token System Design на TON: выбор стандарта (Jetton/NFT/SBT), custom extensions (governance, vesting, royalty), и economics (supply model, fee distribution). Все токены используют sharded pattern — это fundamental to TON. Следующий урок: Telegram Mini Apps architecture.
+</KnowledgeCheck>

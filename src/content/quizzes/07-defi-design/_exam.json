@@ -1,0 +1,101 @@
+{
+  "lessonSlug": "07-defi-design/_exam",
+  "moduleId": "07-defi-design",
+  "examTitle": "Экзамен: DeFi System Design",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdton-m07-exam"
+  },
+  "questions": [
+    {
+      "id": "sdton-m07-exam-q1",
+      "type": "multiple-choice",
+      "question": "Вы проектируете lending protocol на TON. Liquidation flow: bot detects health_factor < 1.0 → calls liquidate() → repays debt → receives collateral with bonus. Какой ключевой design requirement для sustainability?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Liquidation bonus (5-15%) должен быть достаточен, чтобы liquidation была profitable для bots. Иначе никто не будет liquidate → protocol becomes insolvent при price crash"
+        },
+        {
+          "id": "b",
+          "text": "Liquidation должна быть бесплатной для protocol"
+        },
+        {
+          "id": "c",
+          "text": "Только admin может вызвать liquidation"
+        },
+        {
+          "id": "d",
+          "text": "Liquidation невозможна на TON из-за async"
+        }
+      ],
+      "correctAnswer": "a",
+      "studyHint": "Повторите урок 1: DeFi Overview — Liquidation Flow",
+      "explanation": "Liquidation — economic incentive mechanism: bot тратит gas + capital на repay debt, получает collateral × (1 + bonus). Если bonus < (gas_cost + opportunity_cost), никто не будет liquidate → undercollateralized positions accumulate → protocol insolvency при market crash. Bonus 5-15% — industry standard.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m07-exam-q2",
+      "type": "multiple-choice",
+      "question": "DEX Pool обрабатывает swap. Между получением Token A (step 1) и отправкой Token B (step 3), другой пользователь тоже отправил swap. Какой design pattern обеспечивает корректность?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Mutex — заблокировать pool на время swap"
+        },
+        {
+          "id": "b",
+          "text": "Actor Model гарантирует: сообщения обрабатываются последовательно. Второй swap обработается ПОСЛЕ первого. Reserves обновятся корректно без race conditions"
+        },
+        {
+          "id": "c",
+          "text": "Optimistic concurrency — обработать оба и проверить конфликт"
+        },
+        {
+          "id": "d",
+          "text": "На TON race conditions невозможны ни при каких условиях"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите M03: Actor Model — sequential message processing",
+      "explanation": "Actor Model: pool контракт обрабатывает сообщения строго по одному. Swap 1 обрабатывается полностью (reserves updated) → Swap 2 видит обновлённые reserves → корректный price calculation. Нет race conditions ВНУТРИ одного контракта. НО: cross-contract race conditions возможны (два контракта могут обрабатывать параллельно).",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m07-exam-q3",
+      "type": "multiple-choice",
+      "question": "Стекинг пул выдаёт stTON при deposit и принимает обратно при withdraw. Exchange rate: 1 stTON = 1.05 TON (после accumulation). User стейкает 100 TON. Сколько stTON получит?",
+      "options": [
+        {
+          "id": "a",
+          "text": "100 stTON — 1:1"
+        },
+        {
+          "id": "b",
+          "text": "105 stTON — 1:1.05"
+        },
+        {
+          "id": "c",
+          "text": "~95.24 stTON — 100 / 1.05 ≈ 95.24 (по текущему exchange rate)"
+        },
+        {
+          "id": "d",
+          "text": "0 stTON — нужно ждать unlock period"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите урок 1: DeFi Overview — Exchange Rate Token pattern",
+      "explanation": "Exchange Rate Token: stTON → TON rate grows over time. At rate 1.05: user deposits 100 TON → receives 100/1.05 ≈ 95.24 stTON. When withdrawing later (rate = 1.10): 95.24 × 1.10 ≈ 104.76 TON (profit = 4.76 TON = rewards). Rate-based vs rebase: rate change reflects in swap ratio, not in balance.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m07-exam-q4",
+      "type": "true-false",
+      "question": "On-chain DEX TWAP oracle на TON не подвержен flash loan manipulation, потому что flash loans невозможны из-за асинхронной модели исполнения.",
+      "correctAnswer": true,
+      "explanation": "Верно. Flash loans на TON невозможны (async execution, no atomicity between contracts). Без flash loans нельзя: взять кредит → manipulate price → profit → вернуть кредит — всё это в одной транзакции. TWAP oracle на TON подвержен другим рискам (low-liquidity manipulation, multi-block attacks), но не flash loan attacks.",
+      "studyHint": "Повторите урок 1: DeFi Overview — Oracle Design и Flash Loan невозможность на TON",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

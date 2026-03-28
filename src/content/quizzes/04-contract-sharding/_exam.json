@@ -1,0 +1,128 @@
+{
+  "lessonSlug": "04-contract-sharding/_exam",
+  "moduleId": "04-contract-sharding",
+  "examTitle": "Экзамен: Smart Contract Sharding Patterns",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdton-m04-exam"
+  },
+  "questions": [
+    {
+      "id": "sdton-m04-exam-q1",
+      "type": "multiple-choice",
+      "question": "Вы проектируете DEX на TON. Каждый торговый пар (например, TON/USDT) имеет свой liquidity pool. 100,000 LP (liquidity providers). Какой sharding design оптимален?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Один контракт Pool со всеми LP positions в mapping"
+        },
+        {
+          "id": "b",
+          "text": "Один монолитный DEX контракт"
+        },
+        {
+          "id": "c",
+          "text": "Router (factory) → Pool per pair (master) → LP Wallet per provider (child). Три уровня: Router управляет парами, Pool хранит reserves, LP Wallet хранит per-provider liquidity position"
+        },
+        {
+          "id": "d",
+          "text": "Каждая сделка = отдельный контракт"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите уроки 1-2: Sharding-Friendly Design и Jetton Pattern",
+      "explanation": "Трёхуровневый sharding: Router (factory, создаёт pools) → Pool (master per pair, хранит reserves и AMM formula) → LP Wallet (child per provider, хранит liquidity position). 100K LPs = 100K child contracts = параллельная обработка. Pool хранит только aggregate state (total reserves). Аналогия: Pool = Jetton Master, LP Wallet = Jetton Wallet.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m04-exam-q2",
+      "type": "multiple-choice",
+      "question": "Jetton Master получает internal_transfer от sender_address с claimed_from='Alice'. Master вычисляет expected_address = hash(wallet_code + init_data(Alice, master)) и обнаруживает, что sender_address != expected_address. Что произошло?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Alice сменила wallet — нормальная ситуация"
+        },
+        {
+          "id": "b",
+          "text": "Alice's wallet обновил код, адрес изменился"
+        },
+        {
+          "id": "c",
+          "text": "Network error — нужно retry"
+        },
+        {
+          "id": "d",
+          "text": "Попытка атаки: sender не является легитимным Jetton Wallet для Alice. Сообщение должно быть отклонено (throw)"
+        }
+      ],
+      "correctAnswer": "d",
+      "studyHint": "Повторите урок 4: Deterministic Addresses — Security: Preventing Fake Contracts",
+      "explanation": "Deterministic address verification: если sender != expected_address — это не легитимный Jetton Wallet. Возможно злоумышленник пытается зачислить себе токены, отправив поддельный internal_transfer. Контракт ДОЛЖЕН отклонить такое сообщение. Адрес не может 'измениться' — он immutable (hash от initial state).",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m04-exam-q3",
+      "type": "multiple-choice",
+      "question": "Вы проектируете subscription service на TON. 50,000 подписчиков, per-user state: plan, expiry, features. Master деплоит Child(user) при первой подписке. Какой gas нужно отправить в deploy message?",
+      "options": [
+        {
+          "id": "a",
+          "text": "compute_gas + forward_fee + storage_deposit: Child нуждается в начальном балансе для выживания (storage fees), иначе будет заморожен сразу после deploy"
+        },
+        {
+          "id": "b",
+          "text": "Только compute_gas для deploy (~0.01 TON)"
+        },
+        {
+          "id": "c",
+          "text": "0 TON — deploy бесплатен"
+        },
+        {
+          "id": "d",
+          "text": "1 TON для каждого child — с запасом"
+        }
+      ],
+      "correctAnswer": "a",
+      "studyHint": "Повторите урок 5: Custom Sharded Contracts — Common Mistakes",
+      "explanation": "Deploy gas = compute (для deployment) + forward_fee (для message delivery) + storage_deposit (начальный баланс ~0.05 TON для покрытия storage fees). Без storage_deposit child будет заморожен мгновенно. 1 TON (вариант d) — overkill: при 50K users = 50K TON впустую.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m04-exam-q4",
+      "type": "true-false",
+      "question": "Factory pattern на TON позволяет создавать новые контракты динамически, но Master обязан хранить on-chain список адресов всех созданных children для discovery.",
+      "correctAnswer": false,
+      "explanation": "Deterministic addresses: адрес child = hash(code + init_data(params)). Зная параметры, любой может вычислить адрес off-chain без on-chain lookup. Master предоставляет get_child_address(params) get-method (бесплатно). Хранение списка = ненужный storage overhead. Исключение: sequential index (например, NFT Collection.next_item_index для перечисления).",
+      "studyHint": "Повторите урок 4: Deterministic Addresses — Factory Discovery без on-chain registry",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m04-exam-q5",
+      "type": "multiple-choice",
+      "question": "Какой из этих use cases НЕ требует sharded design на TON?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Token с 500,000 holders"
+        },
+        {
+          "id": "b",
+          "text": "Admin panel с 3 admin-ами, управляющая config контрактом"
+        },
+        {
+          "id": "c",
+          "text": "NFT коллекция с 10,000 items"
+        },
+        {
+          "id": "d",
+          "text": "DEX с 50,000 liquidity providers"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите урок 1: Sharding-Friendly Design — когда НЕ шардировать",
+      "explanation": "3 admin-а = минимальная нагрузка, один контракт справится. Шардирование не даст benefit при < 100 пользователях — только добавит complexity. Все остальные варианты (500K tokens, 10K NFTs, 50K LPs) определённо нуждаются в sharded design для масштабируемости.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

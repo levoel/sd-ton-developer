@@ -1,0 +1,109 @@
+---
+title: "Oracle Design и Price Feeds"
+description: "Проектирование ценовых оракулов для TON DeFi: push vs pull, aggregation, staleness protection"
+order: 3
+difficulty: "advanced"
+estimatedTime: 15
+topics: ["Oracle", "Price Feed", "Pyth", "RedStone", "Data Integrity"]
+---
+
+# Oracle Design для TON DeFi
+
+## Проблема: блокчейн не знает внешних цен
+
+Smart contracts не имеют доступа к внешнему миру — они не могут вызвать API биржи для получения цены. **Oracle** — это механизм доставки off-chain данных on-chain.
+
+## Push vs Pull Oracle Models
+
+<DiagramContainer title="Oracle Models: Push vs Pull" className="my-6">
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
+    <Tooltip content="Push: oracle отправляет цены на блокчейн периодически. DeFi контракты читают.">
+      <DataBox label="Push Oracle" className="border-blue-500/30">
+        <div className="text-xs space-y-1">
+          <div>Oracle Bot → on-chain: update_price(ETH=2500)</div>
+          <div>DeFi → Oracle: get_price() → 2500</div>
+          <div className="text-emerald-400 mt-1"><Icon name="check" className="text-emerald-400" size="1.2em" /> Простой для потребителей</div>
+          <div className="text-red-400"><Icon name="alert" className="text-red-400" size="1.2em" /> Oracle платит gas за каждый update</div>
+          <div className="text-red-400"><Icon name="alert" className="text-red-400" size="1.2em" /> Данные могут быть stale</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Pull: пользователь предоставляет signed price data вместе с транзакцией.">
+      <DataBox label="Pull Oracle (RedStone)" className="border-emerald-500/30">
+        <div className="text-xs space-y-1">
+          <div>User → DeFi: swap(amount, signed_price_data)</div>
+          <div>DeFi: verify signature → use price</div>
+          <div className="text-emerald-400 mt-1"><Icon name="check" className="text-emerald-400" size="1.2em" /> Всегда свежие данные</div>
+          <div className="text-emerald-400"><Icon name="check" className="text-emerald-400" size="1.2em" /> Oracle не платит gas</div>
+          <div className="text-red-400"><Icon name="alert" className="text-red-400" size="1.2em" /> User должен получить signed data</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+  </div>
+</DiagramContainer>
+
+## TWAP Oracle (Time-Weighted Average Price)
+
+DEX pools естественно являются TWAP oracle-ами:
+
+```
+TWAP calculation:
+  Записывать cumulative_price каждый блок:
+    cumulative += current_price × time_elapsed
+  
+  TWAP за период [t1, t2]:
+    twap = (cumulative[t2] - cumulative[t1]) / (t2 - t1)
+
+Benefit: resistant to flash manipulation
+  (невозможно мгновенно изменить TWAP — нужно удерживать price долго)
+```
+
+## Oracle Design для Lending Protocol
+
+```
+Lending Oracle Requirements:
+1. Price freshness: < 60 seconds staleness
+2. Price accuracy: < 0.5% deviation from market
+3. Redundancy: multiple sources
+4. Manipulation resistance: TWAP or multi-source median
+5. Fallback: if oracle fails → pause protocol (not use stale data)
+```
+
+### Multi-source Aggregation Pattern
+
+```
+Oracle Aggregator Contract:
+
+Sources:
+  - Pyth Network (off-chain signed data)
+  - STON.fi TWAP (on-chain DEX price)
+  - DeDust TWAP (on-chain DEX price)
+
+Aggregation:
+  1. Collect prices from all sources
+  2. Reject outliers (> 5% from median)
+  3. Final price = median of remaining
+  4. Store with timestamp
+  
+Staleness check:
+  if (now() - last_update > MAX_STALENESS) → reject price
+```
+
+## Security Considerations
+
+| Attack | Description | Mitigation |
+|--------|------------|-----------|
+| **Price manipulation** | Attacker moves DEX price → triggers unfair liquidation | TWAP (time-averaged), multi-source |
+| **Oracle downtime** | Oracle stops updating → stale prices | Staleness check, fallback oracle, protocol pause |
+| **Front-running** | Attacker sees oracle update tx → trades before it | Commit-reveal, pull oracle |
+| **Flash loan + oracle** | Manipulate pool → distort TWAP | Не применимо на TON (no flash loans) |
+
+<Callout type="tip">
+**TON advantage: no flash loan oracle attacks**
+
+На Ethereum flash loan attacks на TWAP oracle — major threat. На TON flash loans невозможны → TWAP oracle-ы значительно безопаснее. Это делает on-chain DEX TWAP viable первичным source для lending oracle.
+</Callout>
+
+<KnowledgeCheck>
+Oracle design для DeFi: push (простой, дорогой) vs pull (свежий, сложный). TWAP oracle-ы на TON безопаснее чем на Ethereum (нет flash loans). Multi-source aggregation + staleness check + fallback = production-ready oracle. В следующем уроке: case studies STON.fi и DeDust architecture.
+</KnowledgeCheck>

@@ -1,0 +1,146 @@
+{
+  "lessonSlug": "02-ton-architecture/_exam",
+  "moduleId": "02-ton-architecture",
+  "examTitle": "Экзамен: Архитектура TON — Deep Dive",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdton-m02-exam"
+  },
+  "questions": [
+    {
+      "id": "sdton-m02-exam-q1",
+      "type": "multiple-choice",
+      "question": "Вы проектируете NFT marketplace на TON с ожидаемыми 100K concurrent users. Контракт marketplace хранит все active listings. При пиковой нагрузке пользователи жалуются на задержки. Какова причина и решение?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Причина: медленный masterchain. Решение: увеличить validator count"
+        },
+        {
+          "id": "b",
+          "text": "Причина: один контракт marketplace = один шард = bottleneck. Решение: sharded design — каждый listing = отдельный контракт, marketplace contract только индексирует"
+        },
+        {
+          "id": "c",
+          "text": "Причина: слишком высокий gas. Решение: уменьшить gas limit"
+        },
+        {
+          "id": "d",
+          "text": "Причина: TON не справляется с 100K users. Решение: мигрировать на Ethereum"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите урок 6: Anti-patterns — Монолитный контракт и урок 2: Infinite Sharding",
+      "explanation": "Монолитный marketplace = один аккаунт = один шард. Все 100K users конкурируют за обработку в одном шарде. Решение: sharded design, где каждый listing — отдельный контракт с owner и price. Marketplace contract хранит только metadata (collection address, fee%). Transactions распределяются по шардам.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m02-exam-q2",
+      "type": "multiple-choice",
+      "question": "Сеть TON имеет 256 шардов. Сообщение отправляется из шарда с ID 00000000 в шард 11111111. Через Hypercube Routing: сколько блоков (хопов) потребуется для доставки и какова итоговая latency при ~5 сек на блок?",
+      "options": [
+        {
+          "id": "a",
+          "text": "1 хоп, 5 сек — прямое соединение"
+        },
+        {
+          "id": "b",
+          "text": "255 хопов, ~21 мин — линейный маршрут"
+        },
+        {
+          "id": "c",
+          "text": "8 хопов, ~40 сек — по одному биту за хоп (log2(256) = 8)"
+        },
+        {
+          "id": "d",
+          "text": "16 хопов, ~80 сек — по два бита за хоп"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите урок 2: Infinite Sharding — раздел Hypercube Routing",
+      "explanation": "Hypercube Routing: O(log N) хопов. 256 шардов = 8-bit ID. Маршрут 00000000→...→11111111 меняет по одному биту = 8 хопов. При ~5 сек на блок: 8 × 5 = ~40 сек. Это worst case (все 8 бит отличаются). Average case — меньше хопов.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m02-exam-q3",
+      "type": "multiple-choice",
+      "question": "Проект планирует DeFi protocol на TON с TVL $50M. Нужно выбрать подход: монолитный контракт (всё в одном) vs sharded design (master + pool contracts). Какие 2 главных аргумента за sharded?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Sharded дешевле в gas и проще в разработке"
+        },
+        {
+          "id": "b",
+          "text": "Монолит невозможно задеплоить на TON из-за ограничений TVM"
+        },
+        {
+          "id": "c",
+          "text": "Sharded поддерживается TON Foundation, монолит — нет"
+        },
+        {
+          "id": "d",
+          "text": "1) Sharded масштабируется через шарды (параллельная обработка), 2) при взломе одного pool contract — остальные не затронуты (blast radius изоляция)"
+        }
+      ],
+      "correctAnswer": "d",
+      "studyHint": "Повторите уроки 1 и 6: Multi-layer Architecture и Anti-patterns",
+      "explanation": "Sharded design: 1) Scalability — каждый pool contract может быть в своём шарде, транзакции обрабатываются параллельно. Монолит = один шард = bottleneck. 2) Security isolation — если один pool contract взломан, атакующий получает доступ только к этому пулу, не ко всему TVL. При $50M TVL — blast radius isolation критична.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m02-exam-q4",
+      "type": "multiple-choice",
+      "question": "Вы проектируете систему на TON. Какой из этих подходов является anti-pattern?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Hardcoding gas forward value как const GAS_FORWARD = 50000000 без расчёта на основе текущих gas prices"
+        },
+        {
+          "id": "b",
+          "text": "Использование bounce: true для всех critical messages"
+        },
+        {
+          "id": "c",
+          "text": "Хранение только агрегатов on-chain, детальная история — в off-chain indexer"
+        },
+        {
+          "id": "d",
+          "text": "Sharded contract design с отдельным контрактом на пользователя"
+        }
+      ],
+      "correctAnswer": "a",
+      "studyHint": "Повторите урок 6: Anti-patterns — Hardcoded gas values",
+      "explanation": "Hardcoded gas values — anti-pattern: gas prices могут измениться через network config update (голосование валидаторов). Правильный подход: рассчитывать gas dynamically на основе get_forward_fee() и текущих условий с safety margin.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m02-exam-q5",
+      "type": "multiple-choice",
+      "question": "Архитектор предлагает использовать TON DNS для human-readable адресов, TON Storage для NFT media, и on-chain контракт для ownership. Какой design pattern это реализует?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Full on-chain architecture"
+        },
+        {
+          "id": "b",
+          "text": "Hybrid On-chain/Off-chain — critical state (ownership) on-chain, large data (media) в decentralized off-chain storage, UX (human-readable names) через on-chain DNS"
+        },
+        {
+          "id": "c",
+          "text": "Full off-chain с on-chain pointer"
+        },
+        {
+          "id": "d",
+          "text": "Microservices architecture"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите урок 5: TON Services — Hybrid Architecture Pattern",
+      "explanation": "Hybrid pattern использует каждый компонент для его сильной стороны: on-chain = trustless ownership, TON Storage = decentralized large file storage (cheaper than on-chain), TON DNS = human-readable addresses. Это рекомендованный pattern для большинства TON приложений.",
+      "bloomLevel": "conceptual"
+    }
+  ]
+}

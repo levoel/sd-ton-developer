@@ -1,0 +1,131 @@
+---
+title: "DeFi Case Studies: STON.fi и DeDust"
+description: "Архитектурный разбор двух основных DEX на TON: design decisions, trade-offs и lessons learned"
+order: 4
+difficulty: "advanced"
+estimatedTime: 18
+topics: ["STON.fi", "DeDust", "Case Study", "DEX Architecture"]
+---
+
+# Case Studies: STON.fi и DeDust
+
+## STON.fi: архитектура
+
+STON.fi — крупнейший DEX на TON. Архитектурные решения:
+
+### Design Decisions
+
+| Решение | Выбор | Rationale |
+|---------|-------|-----------|
+| AMM formula | Constant product (x×y=k) | Простота, проверенность |
+| Pool per pair | Отдельный контракт | Sharding, isolation |
+| Router | Central router contract | Multi-hop, path finding |
+| LP token | Sharded (Jetton pattern) | Per-provider LP position |
+| Fee | 0.3% swap fee | Industry standard |
+| Oracle | On-chain TWAP | No external dependency |
+
+### Architecture Layers
+
+```
+STON.fi Architecture:
+
+User Layer:
+  └── Telegram Mini App / Web dApp
+
+SDK Layer:
+  └── @ston-fi/sdk (TypeScript)
+  └── Handles routing, gas estimation, message building
+
+Contract Layer:
+  ├── Router: create pools, route multi-hop swaps
+  ├── Pool[]: AMM logic, reserves, fee collection
+  └── LP Wallet[]: per-provider liquidity position (sharded)
+
+Infrastructure:
+  ├── Indexer: track events, build analytics
+  └── API: price feeds, pool stats, routing optimization
+```
+
+## DeDust: архитектура
+
+DeDust — второй крупнейший DEX. Отличия от STON.fi:
+
+### Design Differences
+
+| Аспект | STON.fi | DeDust |
+|--------|---------|--------|
+| **Vault pattern** | Pool хранит reserves напрямую | Vault contracts хранят токены |
+| **Native TON** | Special handling | Через wTON wrapper |
+| **Routing** | Router contract on-chain | Smart routing off-chain + on-chain execution |
+| **Fee tiers** | Single (0.3%) | Multiple (0.01%, 0.05%, 0.3%, 1%) |
+
+### DeDust Vault Pattern
+
+```
+DeDust uses Vault pattern:
+
+Vault_USDT: holds all USDT across all pools
+Vault_TON: holds all TON across all pools
+Pool: holds only accounting (reserves), not actual tokens
+
+Advantage: 
+  - Single Jetton Wallet per token (not per pool)
+  - Gas savings on token transfers
+  
+Trade-off:
+  - More complex message flow
+  - Vault = single point of failure per token
+```
+
+<DiagramContainer title="DeDust Vault Pattern vs STON.fi Direct" className="my-6">
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
+    <Tooltip content="STON.fi: каждый Pool имеет свой Jetton Wallet для каждого токена">
+      <DataBox label="STON.fi: Direct" className="border-blue-500/30">
+        <div className="text-xs space-y-1">
+          <div>Pool TON/USDT → USDT Wallet</div>
+          <div>Pool TON/STON → STON Wallet</div>
+          <div>Pool USDT/STON → USDT Wallet (ещё один!)</div>
+          <div className="text-blue-400 mt-1">Простой, но дупликация wallets</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="DeDust: один Vault на токен, pools хранят только accounting">
+      <DataBox label="DeDust: Vault" className="border-emerald-500/30">
+        <div className="text-xs space-y-1">
+          <div>Vault_USDT → один USDT Wallet</div>
+          <div>Pool TON/USDT → accounting only</div>
+          <div>Pool USDT/STON → accounting only</div>
+          <div className="text-emerald-400 mt-1">Эффективный, но сложнее</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+  </div>
+</DiagramContainer>
+
+## Lessons Learned
+
+### 1. Simplicity wins for first version
+
+STON.fi начал с простого x×y=k и single fee tier. DeDust добавил complexity (vaults, multiple fees). Для первой версии протокола — simplicity reduces bugs and audit cost.
+
+### 2. Async requires careful state management
+
+Оба DEX столкнулись с edge cases в async message flows:
+- Что если Pool получил Token A, но Token B message потерялся?
+- Что если Pool обработал swap, но send output token failed (bounce)?
+- Timeout mechanisms и refund flows — критически важны
+
+### 3. Gas estimation is UX
+
+Оба DEX инвестировали в precise gas estimation:
+- SDK рассчитывает optimal gas для каждого типа операции
+- Excess возвращается пользователю
+- dApp показывает estimated fee перед подтверждением
+
+### 4. Off-chain routing, on-chain execution
+
+Оптимальный маршрут multi-hop swap рассчитывается **off-chain** (SDK/API), а выполнение **on-chain**. On-chain routing слишком дорого (перебор путей = compute gas).
+
+<KnowledgeCheck>
+STON.fi и DeDust демонстрируют разные trade-offs одной задачи: direct pools vs vault pattern, single fee vs multi-tier, on-chain vs off-chain routing. При проектировании DeFi на TON: начинайте с простого, инвестируйте в async safety, и рассчитывайте gas estimation для UX. Следующий модуль: Token и NFT System Design.
+</KnowledgeCheck>

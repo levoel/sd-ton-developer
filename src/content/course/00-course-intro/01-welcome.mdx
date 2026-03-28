@@ -1,0 +1,78 @@
+---
+title: "Добро пожаловать в System Design для TON-разработчика"
+description: "Обзор курса, предварительные требования и структура обучения"
+order: 1
+difficulty: "beginner"
+estimatedTime: 10
+---
+
+# Добро пожаловать в System Design для TON-разработчика
+
+Этот курс учит **проектировать production-системы** на TON блокчейне. Не «как написать смарт-контракт», а **почему** архитектура TON устроена именно так, и **как** принимать правильные design-решения при создании сложных систем.
+
+## Что вас ждёт
+
+- **Архитектурное мышление**: CAP-теорема, trade-offs, distributed systems — через призму блокчейна
+- **TON Deep Dive**: masterchain/workchain/shardchain, actor model, infinite sharding paradigm
+- **Contract Sharding**: как проектировать контракты, дружественные к шардированию (Jetton pattern, NFT collections)
+- **DeFi System Design**: DEX (AMM vs Orderbook), lending protocols, staking pools — полная архитектура
+- **Telegram Mini Apps**: архитектура, масштабирование, authentication, payment integration
+- **Payment Channels**: L2 решения на TON, state channels, off-chain transactions
+- **Production**: мониторинг, безопасность, upgradeability, gas optimization
+- **Capstone Project**: проектирование полноценной DeFi-платформы на TON
+
+## Чем этот курс отличается
+
+| Обычный курс по TON | Этот курс |
+|---------------------|-----------|
+| Как написать контракт на Tact | **Почему** контракт проектируется именно так |
+| Синтаксис FunC/Tolk | **Trade-offs** между подходами к шардированию |
+| Деплой на testnet | **Архитектура** production-ready системы |
+| Один контракт | **Система** из взаимодействующих контрактов |
+
+## Предварительные требования
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Базовое понимание блокчейн-технологий (рекомендуется: курс **TON Blockchain Ecosystem** на этой платформе)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Опыт программирования (JavaScript/TypeScript)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Docker Desktop для локальных лабораторий
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Желание думать об архитектуре, а не только о коде
+
+<Callout type="tip">
+**Если вы ещё не знакомы с TON**
+
+Этот курс предполагает, что вы понимаете базовые концепции TON: TVM, cells, messages, workchains. Если нет — пройдите сначала курс [TON Blockchain Ecosystem](/ton-blockchain-course/01-ton-architecture/01-ton-overview), а затем вернитесь сюда.
+</Callout>
+
+## Структура курса
+
+Курс состоит из **14 модулей**, организованных по возрастанию сложности:
+
+### Фундамент (M01-M03)
+1. **Основы System Design** — CAP-теорема, распределённые системы, масштабирование
+2. **Архитектура TON** — многослойная архитектура, шардирование, консенсус
+3. **Actor Model** — асинхронные сообщения, message routing, bounce handling
+
+### Базовые паттерны (M04-M06)
+4. **Contract Sharding** — sharding-friendly design, factory pattern, deterministic addresses
+5. **Данные в TON** — Cells, Bags of Cells, TL-B схемы, storage optimization
+6. **Gas и Fees** — модель оплаты, оптимизация газа, экономика контрактов
+
+### Доменный дизайн (M07-M09)
+7. **DeFi System Design** — DEX, lending, staking, oracle design
+8. **Token Design** — Jetton 2.0, NFT collections, SBT
+9. **Mini Apps** — архитектура Telegram Mini Apps, масштабирование, payments
+
+### Production (M10-M13)
+10. **Payment Channels** — L2 решения, state channels, off-chain
+11. **Безопасность** — attack vectors, upgradability, formal verification
+12. **Production Ops** — мониторинг, observability, deployment
+13. **Capstone** — проектирование DeFi-платформы
+
+## Формат обучения
+
+Каждый модуль содержит:
+- <Icon name="book" className="text-blue-400" size="1.2em" /> **Уроки** с теорией и архитектурными диаграммами
+- <Icon name="cube" className="text-purple-400" size="1.2em" /> **Квизы** для проверки понимания (3-5 вопросов на урок)
+- <Icon name="book" className="text-slate-400" size="1.2em" /> **Экзамен** по модулю (70% для прохождения)
+
+После прохождения всех экзаменов вы получите **PDF-сертификат**.

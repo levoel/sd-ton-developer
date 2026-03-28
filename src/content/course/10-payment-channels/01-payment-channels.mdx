@@ -1,0 +1,105 @@
+---
+title: "Payment Channels и L2 на TON"
+description: "Off-chain платёжные каналы, state channels и Layer 2 решения на TON"
+order: 1
+difficulty: "advanced"
+estimatedTime: 20
+topics: ["Payment Channels", "L2", "State Channels", "Off-chain", "Scalability"]
+---
+
+# Payment Channels и L2
+
+## Зачем L2 если TON уже быстрый?
+
+TON обрабатывает ~100K TPS через sharding — зачем L2? Для **micropayments**: даже $0.007 per tx слишком много для тысяч мелких платежей (streaming payments, gaming in-app purchases, IoT micro-transactions).
+
+## Payment Channels: концепция
+
+Payment channel — два участника открывают **off-chain канал**, обмениваются signed states, и записывают только final state on-chain:
+
+<DiagramContainer title="Payment Channel Lifecycle" className="my-6">
+  <FlowRow className="p-4 gap-1 flex-wrap justify-center">
+    <Tooltip content="Open: оба участника депонируют TON в channel contract">
+      <FlowNode variant="input"><Icon name="lock" className="text-yellow-400" size="1.2em" /> Open Channel</FlowNode>
+    </Tooltip>
+    <Arrow direction="right" />
+    <Tooltip content="Off-chain: участники обмениваются signed state updates (бесплатно, мгновенно)">
+<FlowNode variant="process"> Off-chain Updates</FlowNode>
+    </Tooltip>
+    <Arrow direction="right" />
+    <Tooltip content="Close: финальный state записывается on-chain, funds распределяются">
+      <FlowNode variant="output"><Icon name="lock" className="text-emerald-400" size="1.2em" /> Close Channel</FlowNode>
+    </Tooltip>
+  </FlowRow>
+</DiagramContainer>
+
+```
+Payment Channel Flow:
+
+1. OPEN: Alice и Bob депонируют по 50 TON в channel contract
+   On-chain: 1 tx (create contract + deposits)
+
+2. OFF-CHAIN UPDATES (бесплатно, мгновенно):
+   State 1: Alice=50, Bob=50 (initial)
+   State 2: Alice=45, Bob=55 (Alice paid Bob 5)
+   State 3: Alice=40, Bob=60 (Alice paid Bob 5 more)
+   ... thousands of updates, 0 on-chain tx
+
+3. CLOSE: записать final state (Alice=40, Bob=60)
+   On-chain: 1 tx (close contract + distribute)
+
+Total on-chain: 2 tx for unlimited off-chain payments!
+```
+
+### Cooperative vs Uncooperative Close
+
+```
+Cooperative Close:
+  Оба согласны с final state → 1 tx → instant
+
+Uncooperative Close:
+  Один не согласен → challenge period
+  1. Alice submits her latest signed state
+  2. Challenge period (e.g., 24 hours)
+  3. Bob can submit newer signed state during challenge
+  4. After challenge → latest state wins → distribute
+```
+
+## TON Payment Network (2025 Roadmap)
+
+TON Foundation разрабатывает **Layer 2 Payment Network**:
+
+- Instant transfers с минимальными fees
+- Network of payment channels (Lightning Network style)
+- Smooth asset exchanges
+- Планируется в рамках TON 2025 roadmap (Accelerator upgrade)
+
+<Callout type="note">
+**Статус (март 2026)**: Payment Network находится в разработке. Accelerator mainnet upgrade включает подготовительные изменения (partial lite-server, collator overlays). Полный L2 payment network ожидается позже.
+</Callout>
+
+## Design Implications
+
+### When to use Payment Channels
+
+| Scenario | On-chain tx | Payment Channel |
+|----------|------------|----------------|
+| One-time payment | Да Проще | Overkill |
+| Recurring payments | Нет Дорого | Да |
+| Micropayments (менее $0.01) | Нет Fee больше value | Да |
+| High-frequency trading | Нет Slow | Да |
+| Cross-party streams | Нет | Да |
+
+### Security Model
+
+```
+Security:
+  - Funds locked in smart contract (not with counterparty)
+  - Latest signed state = proof of balance
+  - Challenge mechanism prevents fraud
+  - Timeout: if counterparty disappears → unilateral close after period
+```
+
+<KnowledgeCheck>
+Payment Channels: off-chain scaling для micropayments. Open → off-chain updates (free, instant) → close. TON L2 Payment Network в разработке. Use for high-frequency, low-value payments. On-chain for one-time or high-value transactions.
+</KnowledgeCheck>

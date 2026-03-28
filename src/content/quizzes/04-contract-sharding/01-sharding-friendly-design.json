@@ -1,0 +1,69 @@
+{
+  "lessonSlug": "04-contract-sharding/01-sharding-friendly-design",
+  "moduleId": "04-contract-sharding",
+  "_meta": {
+    "idPrefix": "sdton-m04-01"
+  },
+  "questions": [
+    {
+      "id": "sdton-m04-01-q1",
+      "type": "multiple-choice",
+      "question": "Почему 'один контракт с mapping на 1M пользователей' является anti-pattern на TON?",
+      "options": [
+        {
+          "id": "a",
+          "text": "TVM не поддерживает mapping"
+        },
+        {
+          "id": "b",
+          "text": "TON не поддерживает более 1000 записей в контракте"
+        },
+        {
+          "id": "c",
+          "text": "Один контракт = один шард = последовательная обработка всех 1M транзакций + storage fee за весь mapping. Sharded pattern: N контрактов = N потенциальных шардов = параллельная обработка"
+        },
+        {
+          "id": "d",
+          "text": "Mapping использует слишком много gas при чтении"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "TON шардирует на уровне аккаунтов: один контракт = один аккаунт = один шард. Все транзакции с этим контрактом обрабатываются последовательно. Sharded pattern (Master + N child contracts) позволяет TON распределить их по разным шардам для параллельной обработки. Плюс: storage fee распределяется между child-контрактами.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m04-01-q2",
+      "type": "true-false",
+      "question": "DAO governance контракт с 50 участниками следует обязательно шардировать для оптимальной производительности.",
+      "correctAnswer": false,
+      "explanation": "50 участников = минимальная нагрузка, один контракт справится. Шардирование добавляет complexity: больше сообщений, сложнее debug, больше gas на cross-contract communication. Oversharding — тоже anti-pattern. Шардируйте только при 1000+ пользователях или high-throughput операциях.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m04-01-q3",
+      "type": "multiple-choice",
+      "question": "Как Master контракт проверяет, что incoming message от легитимного child, БЕЗ хранения whitelist?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Master доверяет всем входящим сообщениям"
+        },
+        {
+          "id": "b",
+          "text": "Проверка через external oracle"
+        },
+        {
+          "id": "c",
+          "text": "Master хранит список адресов всех children"
+        },
+        {
+          "id": "d",
+          "text": "Deterministic address verification: Master вычисляет expected_address = hash(child_code + init_data(claimed_owner)), сравнивает с actual sender address"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "Deterministic address = hash(code + initial_data). Master знает child_code и может вычислить ожидаемый адрес для любого owner. Если sender_address == expected_address — sender легитимный. Нет whitelist = нет storage overhead. Это O(1) verification, работает для любого числа children.",
+      "bloomLevel": "applied"
+    }
+  ]
+}

@@ -1,0 +1,163 @@
+---
+title: "Фреймворк System Design Interview для блокчейна"
+description: "Пошаговый подход к решению system design задач в контексте блокчейн-архитектуры"
+order: 5
+difficulty: "intermediate"
+estimatedTime: 15
+topics: ["System Design Interview", "Framework", "Requirements Gathering", "Architecture"]
+---
+
+
+# Фреймворк System Design для блокчейна
+
+## 6-Step Framework
+
+Любую SD-задачу для блокчейна можно решить за 6 шагов:
+
+<DiagramContainer title="6-Step Blockchain SD Framework" className="my-6">
+  <FlowColumn className="p-4 gap-1">
+    <Tooltip content="Определите: кто пользователи? Какие операции? Какие NFR (gas budget, TPS, latency)?">
+      <FlowNode variant="input">1. Requirements & Constraints</FlowNode>
+    </Tooltip>
+    <Arrow direction="down" />
+    <Tooltip content="On-chain vs Off-chain? Какие данные на блокчейне, какие — нет?">
+      <FlowNode variant="process">2. On-chain / Off-chain Split</FlowNode>
+    </Tooltip>
+    <Arrow direction="down" />
+    <Tooltip content="Какие контракты? Как они общаются? Один или несколько шардов?">
+      <FlowNode variant="process">3. Contract Architecture</FlowNode>
+    </Tooltip>
+    <Arrow direction="down" />
+    <Tooltip content="Что хранится в state? Cells layout? Storage fee estimation?">
+      <FlowNode variant="process">4. Data Model & Storage</FlowNode>
+    </Tooltip>
+    <Arrow direction="down" />
+    <Tooltip content="Message flow между контрактами. Bounce handling. Gas forwarding.">
+      <FlowNode variant="process">5. Message Flow & Error Handling</FlowNode>
+    </Tooltip>
+    <Arrow direction="down" />
+    <Tooltip content="Security audit, gas optimization, monitoring, upgrade strategy">
+      <FlowNode variant="output">6. Production Readiness</FlowNode>
+    </Tooltip>
+  </FlowColumn>
+</DiagramContainer>
+
+## Шаг 1: Requirements & Constraints
+
+Перед проектированием **определите ограничения**:
+
+### Функциональные требования
+- Какие операции поддерживает система?
+- Кто пользователи (EOA, другие контракты, боты)?
+- Какие данные нужны на входе и выходе?
+
+### Нефункциональные требования (специфичные для блокчейна)
+
+| Параметр | Вопрос | Пример ответа |
+|----------|--------|---------------|
+| **Gas budget** | Сколько пользователь готов платить за операцию? | ≤ 0.5 TON за swap |
+| **Throughput** | Сколько транзакций в секунду? | 1,000 TPS (нужен sharding) |
+| **Finality** | Как быстро нужно подтверждение? | ≤ 10 сек (OK для DeFi) |
+| **Storage** | Сколько данных на контракте? | ≤ 10KB (storage fee) |
+| **Users** | Сколько уникальных пользователей? | 1M+ → sharded pattern |
+| **Value at risk** | Сколько денег в контракте? | $1M+ → formal verification |
+
+## Шаг 2: On-chain / Off-chain Split
+
+Не всё должно быть на блокчейне. Определите, что on-chain, а что off-chain:
+
+| На блокчейне (on-chain) | Вне блокчейна (off-chain) |
+|------------------------|--------------------------|
+| Балансы токенов | История транзакций (indexer) |
+| Состояние пулов ликвидности | UI / frontend |
+| Права доступа | Аналитика и графики |
+| Critical business logic | Метаданные NFT (IPFS) |
+| | Push-нотификации |
+
+<Callout type="tip">
+**Правило: on-chain = minimum viable state**
+
+На блокчейн выносите **только то, что требует trustless verification**. Всё остальное — off-chain. Это снижает gas и storage costs.
+</Callout>
+
+## Шаг 3: Contract Architecture
+
+Определите контракты и их взаимосвязи:
+
+```
+Вопросы для каждого контракта:
+1. Какие сообщения он принимает? (internal/external)
+2. Какие сообщения он отправляет?
+3. Какое состояние он хранит?
+4. Нужен ли он в единственном экземпляре или sharded?
+5. Кто имеет право вызывать его операции?
+```
+
+## Шаг 4: Data Model & Storage
+
+Спроектируйте хранение данных с учётом TON storage fees:
+
+```
+Правила оптимизации storage:
+1. Минимизируйте размер state — каждый бит стоит денег
+2. Используйте references (ref cells) для больших данных
+3. Храните только текущее состояние — история есть в блокчейне
+4. Рассчитайте storage fee: ~0.00036 TON/KB/year (текущий rate)
+```
+
+## Шаг 5: Message Flow & Error Handling
+
+Опишите потоки сообщений для каждой операции:
+
+```
+Для каждого message flow:
+1. Нарисуйте sequence diagram
+2. Определите gas forwarding (сколько gas пересылать)
+3. Определите bounce handling (что делать при ошибке)
+4. Проверьте edge cases (нулевые суммы, overflow, replay)
+```
+
+## Шаг 6: Production Readiness
+
+Проверьте систему на готовность к production:
+
+- [ ] **Security**: reentrancy, access control, overflow, front-running
+- [ ] **Gas**: worst-case gas estimation, gas forwarding корректен
+- [ ] **Upgradability**: стратегия обновления (migration vs proxy)
+- [ ] **Monitoring**: как узнать, что система работает корректно?
+- [ ] **Recovery**: что делать при баге? (admin functions, emergency pause)
+
+## Пример: Применение Framework к задаче «Staking Pool»
+
+> Спроектируйте staking pool на TON, который позволяет пользователям стейкать TON и получать liquid staking токен (stTON).
+
+### Step 1: Requirements
+- Пользователи: ~10K стейкеров, ~1M операций/месяц
+- Gas: ≤ 0.3 TON за stake/unstake
+- Security: TVL $10M+ → высокий приоритет безопасности
+- Finality: не критична (стейкинг — не instant trade)
+
+### Step 2: On-chain / Off-chain
+- On-chain: балансы stTON, стейк в validator pool, exchange rate
+- Off-chain: APY калькулятор, история доходности, UI
+
+### Step 3: Contract Architecture
+- Pool Master — управление пулом, exchange rate
+- stTON Minter — выпуск liquid staking токенов (sharded Jetton pattern)
+- Validator Controller — взаимодействие с validator set
+
+### Step 4: Data Model
+- Pool Master: total_staked, total_minted, current_rate, last_update
+- stTON Wallet: balance (standard Jetton wallet)
+
+### Step 5: Message Flow
+- Stake: User → Pool Master → mint stTON → stTON Wallet
+- Unstake: User → burn stTON → Pool Master → return TON
+
+### Step 6: Production
+- Security: audit exchange rate calculation, prevent manipulation
+- Monitoring: track total_staked vs validator balance discrepancy
+
+<KnowledgeCheck>
+Этот 6-шаговый framework будет использоваться во всех последующих модулях. Каждый домен (DeFi, Mini Apps, Payment Channels) добавляет свои специфические шаги, но базовая структура остаётся. В следующем модуле применим эти принципы к архитектуре TON.
+</KnowledgeCheck>

@@ -1,0 +1,95 @@
+{
+  "lessonSlug": "01-sd-fundamentals/02-cap-theorem",
+  "moduleId": "01-sd-fundamentals",
+  "_meta": {
+    "idPrefix": "sdton-m01-02"
+  },
+  "questions": [
+    {
+      "id": "sdton-m01-02-q1",
+      "type": "multiple-choice",
+      "question": "Согласно CAP-теореме, почему в реальных распределённых системах выбор стоит между CP и AP, а не CA?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Потому что сетевые разделения (network partitions) в реальности неизбежны — P обязательна, остаётся выбор между C и A"
+        },
+        {
+          "id": "b",
+          "text": "Потому что CA-системы ещё не изобретены"
+        },
+        {
+          "id": "c",
+          "text": "Потому что Consistency и Availability — одно и то же"
+        },
+        {
+          "id": "d",
+          "text": "Потому что CA-системы слишком дорогие для блокчейна"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "В реальном мире сетевые разделения неизбежны — кабели обрезаются, дата-центры теряют связь, роутеры падают. Partition Tolerance (P) — обязательное свойство любой реальной распределённой системы. Поэтому выбор сводится к CP (consistency при потере availability) или AP (availability при потере consistency).",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m01-02-q2",
+      "type": "multiple-choice",
+      "question": "Как TON решает вопрос consistency между шардами?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Strong consistency — все шарды синхронизируются перед каждым блоком"
+        },
+        {
+          "id": "b",
+          "text": "Гибридная модель: strong consistency внутри шарда, eventual consistency между шардами, periodic consistency через masterchain"
+        },
+        {
+          "id": "c",
+          "text": "Отсутствие consistency — каждый шард полностью независим"
+        },
+        {
+          "id": "d",
+          "text": "TON не использует шарды, поэтому вопрос consistency не стоит"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "TON использует гибридную модель: внутри одного шарда транзакции строго упорядочены (strong consistency). Между шардами — сообщения доставляются с задержкой (eventual consistency). Masterchain периодически (~каждые 5 сек) фиксирует состояние всех шардов (periodic global consistency).",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m01-02-q3",
+      "type": "multiple-choice",
+      "question": "Почему TON может достигать ~100,000 TPS, хотя latency (~5 сек) выше, чем у Solana (~400 мс)?",
+      "options": [
+        {
+          "id": "a",
+          "text": "TON использует более быстрые серверы"
+        },
+        {
+          "id": "b",
+          "text": "TON жертвует безопасностью ради скорости"
+        },
+        {
+          "id": "c",
+          "text": "TON оптимизирует throughput через динамическое шардирование — каждый шард обрабатывает транзакции параллельно, а Solana ограничена одной цепочкой"
+        },
+        {
+          "id": "d",
+          "text": "Цифры 100,000 TPS — маркетинг, реальный throughput такой же как у Solana"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "Solana оптимизирует latency — каждый блок создаётся максимально быстро в одной цепочке. TON оптимизирует throughput через горизонтальное масштабирование: при росте нагрузки создаются новые шарды, каждый из которых обрабатывает транзакции параллельно. Latency выше (5 сек vs 400 мс), но суммарный throughput значительно больше.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m01-02-q4",
+      "type": "true-false",
+      "question": "В TON блоке ~350 валидаторов голосуют за каждый блок, и для принятия блока достаточно простого большинства (50% + 1).",
+      "correctAnswer": false,
+      "explanation": "TON использует BFT (Byzantine Fault Tolerant) consensus, который требует 2/3 + 1 голосов (не простого большинства). Это обеспечивает устойчивость к до ⅓ злонамеренных валидаторов. Простое большинство (50%+1) было бы уязвимо к «51% атаке».",
+      "bloomLevel": "conceptual"
+    }
+  ]
+}

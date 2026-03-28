@@ -1,0 +1,95 @@
+{
+  "lessonSlug": "01-sd-fundamentals/03-design-patterns",
+  "moduleId": "01-sd-fundamentals",
+  "_meta": {
+    "idPrefix": "sdton-m01-03"
+  },
+  "questions": [
+    {
+      "id": "sdton-m01-03-q1",
+      "type": "multiple-choice",
+      "question": "DEX на TON выполняет swap: пользователь отправляет Token A, получает Token B. Если на шаге выдачи Token B произошла ошибка, какой design pattern обеспечивает возврат Token A пользователю?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Event Sourcing — все события записаны и можно откатить"
+        },
+        {
+          "id": "b",
+          "text": "Circuit Breaker — система отключается и ждёт ручного вмешательства"
+        },
+        {
+          "id": "c",
+          "text": "CQRS — запись и чтение разделены, поэтому ошибки не влияют на баланс"
+        },
+        {
+          "id": "d",
+          "text": "Saga Pattern — каждый шаг имеет компенсирующую транзакцию, при сбое выполняются компенсации"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "Saga Pattern разбивает сложную операцию на шаги, каждый из которых имеет компенсирующую транзакцию. При сбое шага 3 (выдача Token B) — выполняется компенсация шага 1 (возврат Token A). В TON это реализуется через bounce messages — если контракт не смог обработать сообщение, автоматически генерируется bounce, который запускает компенсацию.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m01-03-q2",
+      "type": "multiple-choice",
+      "question": "Какой design pattern реализован в TON на уровне протокола, когда все транзакции последовательно записываются в блокчейн, формируя неизменяемый log состояния?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Event Sourcing — блокчейн по определению хранит последовательность событий (транзакций), из которых вычисляется текущее состояние"
+        },
+        {
+          "id": "b",
+          "text": "Saga Pattern"
+        },
+        {
+          "id": "c",
+          "text": "Circuit Breaker"
+        },
+        {
+          "id": "d",
+          "text": "CQRS"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Блокчейн — это Event Sourcing по определению. Каждая транзакция — это событие. Состояние контракта — результат последовательного применения всех транзакций от genesis block. В отличие от традиционного Event Sourcing (где events хранятся в отдельном store), в блокчейне event log — это сам блокчейн.",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "sdton-m01-03-q3",
+      "type": "multiple-choice",
+      "question": "Контракт обрабатывает transfer. Одно и то же сообщение может быть доставлено повторно. Какой pattern предотвращает двойное зачисление?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Circuit Breaker — отключает обработку при повторных сообщениях"
+        },
+        {
+          "id": "b",
+          "text": "Idempotency — контракт отслеживает query_id и игнорирует повторные сообщения"
+        },
+        {
+          "id": "c",
+          "text": "CQRS — чтение отделено от записи"
+        },
+        {
+          "id": "d",
+          "text": "Saga — компенсирует первое зачисление"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Idempotency гарантирует, что повторная обработка одного и того же сообщения даёт тот же результат. В TON контрактах это реализуется через tracking query_id — уникального идентификатора сообщения. При повторном получении сообщения с уже обработанным query_id, контракт просто игнорирует его.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m01-03-q4",
+      "type": "true-false",
+      "question": "В TON bounce messages работают для всех типов сообщений — и internal, и external.",
+      "correctAnswer": false,
+      "explanation": "Bounce messages работают только для internal messages с установленным флагом bounce: true. External messages (отправленные из off-chain в контракт) не могут bounce — нет адреса возврата. Это важно для design: при отправке external message нужно учитывать, что средства могут быть потеряны, если контракт не смог его обработать.",
+      "bloomLevel": "conceptual"
+    }
+  ]
+}

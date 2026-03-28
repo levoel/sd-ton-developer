@@ -1,0 +1,128 @@
+{
+  "lessonSlug": "05-data-structures/_exam",
+  "moduleId": "05-data-structures",
+  "examTitle": "Экзамен: Данные в TON — Cells, BoC, TL-B",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "sdton-m05-exam"
+  },
+  "questions": [
+    {
+      "id": "sdton-m05-exam-q1",
+      "type": "multiple-choice",
+      "question": "Вы проектируете state для Lending Position контракта. Данные: owner (267 bits), collateral_amount (124 bits), borrow_amount (124 bits), health_factor (32 bits), last_update (32 bits), liquidation_price (64 bits), is_active (1 bit). Помещается ли всё в одну cell?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Да — 267 + 124 + 124 + 32 + 32 + 64 + 1 = 644 bits < 1023 bits. Помещается в одну root cell"
+        },
+        {
+          "id": "b",
+          "text": "Нет — нужно минимум 3 cells"
+        },
+        {
+          "id": "c",
+          "text": "Зависит от workchain"
+        },
+        {
+          "id": "d",
+          "text": "Нет — каждое поле требует отдельную cell"
+        }
+      ],
+      "correctAnswer": "a",
+      "studyHint": "Повторите урок 1: Cells — ограничения и урок 5: State Layout Reference Card",
+      "explanation": "267 + 124 + 124 + 32 + 32 + 64 + 1 = 644 bits. Cell вмещает 1023 bits. 644 < 1023 → всё помещается в одну cell с запасом 379 bits. Плюс нужна 1 reference на code cell. Total: 2 cells (root + code ref). Annual storage fee ≈ 0.000008 TON — минимально.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m05-exam-q2",
+      "type": "multiple-choice",
+      "question": "Контракт хранит HashmapE с 50,000 entries. Get-операция стоит ~30,000 gas units. Пользователи жалуются на высокий gas. Какое архитектурное решение?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Увеличить gas limit"
+        },
+        {
+          "id": "b",
+          "text": "Заменить HashmapE на child contracts: 50K entries → 50K отдельных контрактов. Gas per operation станет constant (~5,000 units) вместо O(key_length)"
+        },
+        {
+          "id": "c",
+          "text": "Использовать другой тип dictionary"
+        },
+        {
+          "id": "d",
+          "text": "Кэшировать результаты get в отдельном контракте"
+        }
+      ],
+      "correctAnswer": "b",
+      "studyHint": "Повторите урок 4: Dictionaries — Dict vs Child Contracts",
+      "explanation": "HashmapE с 50K entries: gas per get ≈ 30K units (Patricia trie traversal), storage fee concentrated in one contract. Child contracts: gas per interaction ≈ 5K units (direct message to specific child), storage fee distributed. Trade-off: child contracts need more messages (async), but gas and storage scale better at 50K+ entries.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m05-exam-q3",
+      "type": "multiple-choice",
+      "question": "TL-B: `transfer#f8a7ea5 query_id:uint64 amount:(VarUInteger 16) destination:MsgAddress custom_payload:(Maybe ^Cell) = Msg;`. Если custom_payload отсутствует, сколько бит занимает поле custom_payload?",
+      "options": [
+        {
+          "id": "a",
+          "text": "0 бит — Maybe полностью отсутствует"
+        },
+        {
+          "id": "b",
+          "text": "256 бит — hash отсутствующей cell"
+        },
+        {
+          "id": "c",
+          "text": "1 бит — Maybe кодируется как bit flag: 0 = absent, 1 = present + ref to cell"
+        },
+        {
+          "id": "d",
+          "text": "32 бита — null marker"
+        }
+      ],
+      "correctAnswer": "c",
+      "studyHint": "Повторите урок 2: BoC — Compact Encoding Strategies",
+      "explanation": "Maybe X кодируется как: 0 (1 bit) если absent, или 1 (1 bit) + X если present. Для (Maybe ^Cell): absent = 1 bit total, present = 1 bit + reference. Это экономит bits для optional fields: пользователи без custom_payload платят минимум (1 bit overhead instead of empty cell ref).",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "sdton-m05-exam-q4",
+      "type": "true-false",
+      "question": "При проектировании state layout на TON, порядок полей в cell не имеет значения — TVM автоматически оптимизирует доступ к полям.",
+      "correctAnswer": false,
+      "explanation": "Порядок полей ВАЖЕН: cell читается последовательно (slice parsing). Чтобы прочитать 5-е поле, нужно прочитать (skip) первые 4. Частоиспользуемые поля → в начало cell. Редкие → в конец или в ref. Также: порядок определяется TL-B schema и должен быть согласован между отправителем и получателем.",
+      "studyHint": "Повторите урок 1: Cells — Sequential Parsing и урок 5: State Layout Optimization",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m05-exam-q5",
+      "type": "multiple-choice",
+      "question": "DEX контракт хранит историю всех свапов в HashmapE. После 6 месяцев dict содержит 100K entries, storage fee = 4 TON/year, баланс контракта падает. Как решить?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Увеличить баланс контракта"
+        },
+        {
+          "id": "b",
+          "text": "Удалить всю историю за одну транзакцию"
+        },
+        {
+          "id": "c",
+          "text": "Перенести на другой блокчейн"
+        },
+        {
+          "id": "d",
+          "text": "Не хранить историю on-chain. Хранить только aggregate (total_volume, total_swaps). Полная история → off-chain indexer. Gas-bounded cleanup для старых entries (batch delete по 50 per tx)"
+        }
+      ],
+      "correctAnswer": "d",
+      "studyHint": "Повторите урок 5: Storage Optimization — Cleanup Expired Data",
+      "explanation": "Three-pronged approach: 1) Don't store history on-chain — aggregates only (total_volume, total_swaps). 2) Off-chain indexer для полной истории. 3) Gas-bounded cleanup — удалять expired entries batch по 50 per tx (не всё сразу — может не хватить gas). Увеличение баланса (a) — temporary fix, не solution.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

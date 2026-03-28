@@ -1,0 +1,43 @@
+{
+  "lessonSlug": "04-contract-sharding/03-nft-factory-pattern",
+  "moduleId": "04-contract-sharding",
+  "_meta": {
+    "idPrefix": "sdton-m04-03"
+  },
+  "questions": [
+    {
+      "id": "sdton-m04-03-q1",
+      "type": "multiple-choice",
+      "question": "Creator хочет минтить 10,000 NFT. TVM ограничивает ~255 outbound messages на транзакцию. Какой паттерн использовать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Отправить 10,000 messages в одной транзакции — TVM справится"
+        },
+        {
+          "id": "b",
+          "text": "Chain of batch sends: каждая транзакция деплоит 255 Items + self-message 'continue'. ~40 транзакций для 10,000 NFT"
+        },
+        {
+          "id": "c",
+          "text": "Варианты b и c — оба рабочие, выбор зависит от требований"
+        },
+        {
+          "id": "d",
+          "text": "Lazy minting: Items деплоятся только при claim/purchase, не при создании коллекции"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "Оба варианта рабочие. Batch sends (b): Creator платит gas (~100+ TON) заранее, все NFT ready. Lazy minting (c): Creator не платит за mint, cost переносится на buyer — дешевле для creator, но NFT не существуют до claim. Выбор = trade-off: upfront cost vs buyer experience.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "sdton-m04-03-q2",
+      "type": "true-false",
+      "question": "SBT (Soulbound Token) на TON использует ту же архитектуру Collection + Item, что и обычный NFT, с единственным отличием — запрет на transfer.",
+      "correctAnswer": true,
+      "explanation": "Верно. SBT использует ту же архитектуру Collection + Item, что и NFT. Единственное отличие: transfer handler в Item-контракте SBT отклоняет все попытки перевода. Архитектурно шардирование, factory pattern, metadata — всё идентично обычным NFT.",
+      "bloomLevel": "conceptual"
+    }
+  ]
+}

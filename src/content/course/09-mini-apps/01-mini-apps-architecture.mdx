@@ -1,0 +1,210 @@
+---
+title: "Telegram Mini Apps: архитектура и масштабирование"
+description: "System Design для Telegram Mini Apps на TON: frontend-backend architecture, auth, scaling, payments"
+order: 1
+difficulty: "advanced"
+estimatedTime: 22
+topics: ["Mini Apps", "Telegram", "TWA", "Authentication", "Scaling", "TON Connect"]
+---
+
+# Telegram Mini Apps Architecture
+
+## Что такое Mini Apps
+
+Telegram Mini Apps (TMAs) — web-приложения, встроенные в Telegram. Работают как обычные web apps, но с доступом к Telegram API и TON Wallet.
+
+<DiagramContainer title="Mini App Architecture" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowRow className="gap-4 justify-center">
+      <Tooltip content="Frontend запускается внутри Telegram WebView (iOS/Android/Desktop)">
+        <DataBox label="Telegram Client" className="border-blue-500/30 w-56">
+          <div className="text-xs space-y-1">
+            <div>WebView → Mini App (HTML/JS)</div>
+            <div>Telegram.WebApp SDK</div>
+            <div>initData (signed user data)</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+    </FlowRow>
+    <FlowRow className="gap-2 justify-center">
+      <Arrow direction="down" />
+      <Arrow direction="down" />
+    </FlowRow>
+    <FlowRow className="gap-4 justify-center">
+      <Tooltip content="Backend валидирует initData, хранит state, обрабатывает бизнес-логику">
+        <DataBox label="Backend API" className="border-emerald-500/30 w-44">
+          <div className="text-xs space-y-1">
+            <div>Auth: validate initData</div>
+            <div>State: user progress</div>
+            <div>Business logic</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+      <Tooltip content="Smart contracts на TON для trustless операций: payments, NFT, tokens">
+        <DataBox label="TON Blockchain" className="border-purple-500/30 w-44">
+          <div className="text-xs space-y-1">
+            <div>Payments (TON/Jettons)</div>
+            <div>NFT ownership</div>
+            <div>On-chain rewards</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+## Authentication: initData
+
+Telegram передаёт Mini App **signed user data** (initData):
+
+```
+initData содержит:
+  user: { id, first_name, last_name, username, language_code }
+  auth_date: timestamp
+  hash: HMAC-SHA256 signature (key = bot_token)
+
+Backend validation:
+1. Парсить initData (URL-encoded string)
+2. Собрать data_check_string (отсортированные поля)
+3. Вычислить secret_key = HMAC-SHA256(bot_token, "WebAppData")
+4. Вычислить hash = HMAC-SHA256(secret_key, data_check_string)
+5. Сравнить hash с переданным → если совпадает, данные authentic
+6. Проверить auth_date (не старше X минут)
+```
+
+<Callout type="warning">
+**Валидация initData — ОБЯЗАТЕЛЬНА на backend**
+
+Никогда не доверяйте initData без проверки подписи. Клиент может подделать user_id. Только backend с bot_token может проверить HMAC-SHA256 подпись. Без этого — полный auth bypass.
+</Callout>
+
+## TON Connect: Wallet Integration
+
+TON Connect — протокол подключения кошелька к Mini App:
+
+```
+TON Connect Flow:
+1. Mini App показывает "Connect Wallet" кнопку
+2. User выбирает wallet (Tonkeeper, TON Space)
+3. Wallet открывается → user подтверждает connection
+4. Mini App получает wallet address
+5. Для транзакций: Mini App → send tx request → Wallet → user confirms → tx signed → broadcast
+
+Security:
+  - User контролирует private keys (не Mini App!)
+  - Каждая транзакция требует подтверждения в wallet
+  - Mini App не имеет доступа к private keys
+```
+
+## Scaling Mini Apps
+
+### Challenge: миллионы пользователей
+
+Telegram Mini Apps могут получить миллионы пользователей за дни (Notcoin: 35M+). Backend должен масштабироваться:
+
+```
+Scaling Stack:
+├── CDN: static assets (JS, CSS, images)
+├── Load Balancer: distribute API requests
+├── Stateless API Servers: horizontally scalable
+├── Cache Layer: Redis for session, leaderboard, hot data
+├── Database: PostgreSQL/MongoDB for persistent state
+├── Queue: для async operations (NFT minting, rewards)
+└── TON Integration: async tx submission + indexer for confirmation
+```
+
+### Design Pattern: Off-chain Game, On-chain Rewards
+
+```
+Game Architecture (Hamster Kombat style):
+
+Off-chain (backend):
+  - User progress, scores, achievements
+  - Game logic, anti-cheat
+  - Leaderboard (Redis sorted set)
+  - Session management
+
+On-chain (TON):
+  - Claim rewards (verified by backend signature)
+  - NFT achievements (SBT)
+  - Token distribution
+  - Staking for boosts
+
+Bridge: Backend signs reward data → user submits to contract → 
+        contract verifies signature → mint/transfer
+```
+
+<DiagramContainer title="Off-chain Game + On-chain Rewards" className="my-6">
+  <FlowRow className="p-4 gap-2 flex-wrap justify-center">
+    <Tooltip content="Game loop runs off-chain for speed and free UX">
+      <FlowNode variant="input"><Icon name="code" className="text-purple-400" size="1.2em" /> Game (off-chain)</FlowNode>
+    </Tooltip>
+    <Arrow direction="right" />
+    <Tooltip content="Backend validates, signs reward claim">
+      <FlowNode variant="process"><Icon name="book" className="text-slate-400" size="1.2em" /> Sign Reward</FlowNode>
+    </Tooltip>
+    <Arrow direction="right" />
+    <Tooltip content="User submits signed claim to smart contract">
+      <FlowNode variant="process"><Icon name="book" className="text-slate-400" size="1.2em" /> Submit Claim</FlowNode>
+    </Tooltip>
+    <Arrow direction="right" />
+    <Tooltip content="Contract verifies signature, mints/transfers tokens">
+      <FlowNode variant="output"><Icon name="cube" className="text-blue-400" size="1.2em" /> Mint/Transfer</FlowNode>
+    </Tooltip>
+  </FlowRow>
+</DiagramContainer>
+
+## Payment Integration
+
+### Telegram Stars vs TON Payments
+
+| Аспект | Telegram Stars | TON Direct |
+|--------|---------------|-----------|
+| **UX** | In-app purchase (like App Store) | TON Connect → wallet confirm |
+| **Fees** | ~30% (Apple/Google cut) | ~$0.007 (TON tx fee) |
+| **Currency** | Stars (fiat equivalent) | TON, Jettons, USDt |
+| **Refunds** | Telegram handles | Custom logic needed |
+| **Best for** | Digital goods, subscriptions | DeFi, NFT, crypto-native |
+
+### Payment Flow Design
+
+```
+TON Payment Flow:
+1. Backend creates invoice (amount, description, callback)
+2. Frontend → TON Connect → send payment tx
+3. TON tx confirmed on-chain
+4. Backend indexer detects payment → credit user account
+5. Backend sends confirmation to frontend
+
+Important: check payment AMOUNT and DESTINATION
+  [NO] Trust frontend that payment was made
+  [OK] Verify on-chain via indexer/API
+```
+
+## Anti-abuse Patterns
+
+### Rate Limiting
+
+```
+Rate limits:
+  API calls: 100 req/sec per user
+  Game actions: 10 actions/sec per user
+  Reward claims: 1 per hour per user
+  
+Implementation: Redis sliding window
+```
+
+### Sybil Protection
+
+```
+Sybil resistance:
+  - Telegram Premium requirement
+  - Phone number verification (via Telegram)
+  - Minimum account age
+  - On-chain activity requirement (TON tx history)
+  - CAPTCHA for suspicious activity
+```
+
+<KnowledgeCheck>
+Mini App architecture: Telegram WebView (frontend) + Backend API (auth, state, logic) + TON Blockchain (payments, NFT, rewards). Key patterns: initData validation (security), off-chain game + on-chain rewards (scalability), TON Connect (wallet integration). При масштабировании: stateless API, Redis cache, async queues, CDN.
+</KnowledgeCheck>
