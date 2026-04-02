@@ -7,21 +7,74 @@
   "language": "ru",
   "version": "1.0.0",
   "modules": [
-    { "id": "00-course-intro", "title": "Введение в курс" },
-    { "id": "01-sd-fundamentals", "title": "Основы System Design" },
-    { "id": "02-ton-architecture", "title": "Архитектура TON — Deep Dive" },
-    { "id": "03-actor-model", "title": "Actor Model и асинхронные сообщения" },
-    { "id": "04-contract-sharding", "title": "Smart Contract Sharding Patterns" },
-    { "id": "05-data-structures", "title": "Данные в TON: Cells, BoC, TL-B" },
-    { "id": "06-gas-optimization", "title": "Gas, Fees и оптимизация" },
-    { "id": "07-defi-design", "title": "DeFi System Design" },
-    { "id": "08-token-design", "title": "NFT и Token System Design" },
-    { "id": "09-mini-apps", "title": "Telegram Mini Apps — архитектура" },
-    { "id": "10-payment-channels", "title": "Payment Channels и L2" },
-    { "id": "11-security", "title": "Безопасность и Upgradability" },
-    { "id": "12-production-ops", "title": "Мониторинг и Production Ops" },
-    { "id": "13-capstone", "title": "Capstone: DeFi платформа" }
+    {
+      "id": "00-course-intro",
+      "title": "Введение в курс"
+    },
+    {
+      "id": "01-sd-fundamentals",
+      "title": "Основы System Design"
+    },
+    {
+      "id": "02-ton-architecture",
+      "title": "Архитектура TON — Deep Dive"
+    },
+    {
+      "id": "03-actor-model",
+      "title": "Actor Model и асинхронные сообщения"
+    },
+    {
+      "id": "04-contract-sharding",
+      "title": "Smart Contract Sharding Patterns"
+    },
+    {
+      "id": "05-data-structures",
+      "title": "Данные в TON: Cells, BoC, TL-B"
+    },
+    {
+      "id": "06-gas-optimization",
+      "title": "Gas, Fees и оптимизация"
+    },
+    {
+      "id": "07-defi-design",
+      "title": "DeFi System Design"
+    },
+    {
+      "id": "08-token-design",
+      "title": "NFT и Token System Design"
+    },
+    {
+      "id": "09-mini-apps",
+      "title": "Telegram Mini Apps — архитектура"
+    },
+    {
+      "id": "10-payment-channels",
+      "title": "Payment Channels и L2"
+    },
+    {
+      "id": "11-security",
+      "title": "Безопасность и Upgradability"
+    },
+    {
+      "id": "12-production-ops",
+      "title": "Мониторинг и Production Ops"
+    },
+    {
+      "id": "13-capstone",
+      "title": "Capstone: DeFi платформа"
+    }
   ],
-  "tags": ["ton", "system-design", "blockchain", "defi", "smart-contracts", "telegram-mini-apps"],
-  "estimatedHours": 60
+  "tags": [
+    "ton",
+    "system-design",
+    "blockchain",
+    "defi",
+    "smart-contracts",
+    "telegram-mini-apps"
+  ],
+  "estimatedHours": 60,
+  "pricing": {
+    "type": "paid",
+    "priceStars": 100
+  }
 }

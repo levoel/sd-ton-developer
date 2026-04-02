@@ -1,0 +1,452 @@
+{
+  "title": "Решение проблем System Design для TON Developer",
+  "description": "Частые ошибки проектирования TON-приложений — симптомы, причины и пошаговые решения.",
+  "filters": {
+    "primary": {
+      "label": "Область",
+      "field": "area",
+      "options": [
+        { "id": "architecture", "label": "Архитектура", "icon": "cube", "color": "blue" },
+        { "id": "messaging", "label": "Messaging и Actor Model", "icon": "rocket", "color": "purple" },
+        { "id": "sharding", "label": "Sharding", "icon": "layers", "color": "cyan" },
+        { "id": "gas", "label": "Gas и экономика", "icon": "lightning", "color": "orange" },
+        { "id": "defi", "label": "DeFi Design", "icon": "code", "color": "teal" },
+        { "id": "security", "label": "Security", "icon": "wrench", "color": "red" },
+        { "id": "production", "label": "Production", "icon": "gear", "color": "green" }
+      ]
+    },
+    "secondary": {
+      "label": "Тип ошибки",
+      "field": "category",
+      "options": [
+        { "id": "design-mistake", "label": "Ошибки проектирования", "icon": "cube", "color": "amber" },
+        { "id": "scaling-error", "label": "Ошибки масштабирования", "icon": "rocket", "color": "indigo" },
+        { "id": "security-vulnerability", "label": "Уязвимости", "icon": "wrench", "color": "red" },
+        { "id": "cost-overrun", "label": "Перерасход ресурсов", "icon": "alert", "color": "orange" },
+        { "id": "integration-error", "label": "Ошибки интеграции", "icon": "gear", "color": "blue" }
+      ]
+    }
+  },
+  "entries": [
+    {
+      "errorMessage": "Монолитный контракт вместо sharded-архитектуры",
+      "area": "architecture",
+      "category": "design-mistake",
+      "symptoms": [
+        "Контракт упирается в лимит газа при росте числа пользователей",
+        "Невозможно параллельно обрабатывать транзакции — все идут через один аккаунт",
+        "Стоимость одной операции растёт пропорционально размеру хранилища"
+      ],
+      "cause": "Перенос монолитного паттерна из EVM: вся логика и состояние в одном контракте. В TON это создаёт единую точку сериализации — один аккаунт обрабатывает все транзакции последовательно, теряя преимущества шардирования.",
+      "solution": [
+        "Декомпозируйте контракт по паттерну master–child: master хранит только глобальную конфигурацию",
+        "Каждый пользователь или сущность получает собственный child-контракт с отдельным состоянием",
+        "Используйте deterministic addressing (hash(master_address, user_id)) для вычисления адресов child-контрактов",
+        "Проверьте, что child-контракты попадают в разные шарды для параллелизма"
+      ],
+      "relatedLessons": [
+        { "title": "Sharding-Friendly Design", "slug": "04-contract-sharding/01-sharding-friendly-design" },
+        { "title": "Anti-Patterns", "slug": "02-ton-architecture/06-anti-patterns" }
+      ]
+    },
+    {
+      "errorMessage": "Игнорирование bounce-сообщений",
+      "area": "messaging",
+      "category": "design-mistake",
+      "symptoms": [
+        "Средства отправлены, но не зачислены получателю — застряли в промежуточном контракте",
+        "Состояние отправителя обновлено, но получатель не существует или отклонил сообщение",
+        "Невозможно восстановить средства после неуспешной отправки"
+      ],
+      "cause": "В TON сообщения — асинхронные. Если получатель не существует или выбрасывает исключение, сообщение возвращается (bounce). Без обработки bounce-сообщений контракт теряет средства и остаётся в несогласованном состоянии.",
+      "solution": [
+        "Реализуйте on_bounce handler в каждом контракте, отправляющем сообщения с TON",
+        "В bounce handler откатывайте состояние: верните баланс отправителю, сбросьте флаги",
+        "Используйте op-коды для идентификации, какое именно исходящее сообщение вернулось",
+        "Тестируйте bounce-сценарии: отправка на несуществующий адрес, отправка с недостаточным gas"
+      ],
+      "relatedLessons": [
+        { "title": "Bounce Handling", "slug": "03-actor-model/03-bounce-handling" },
+        { "title": "Message Flow Design", "slug": "03-actor-model/02-message-flow-design" }
+      ]
+    },
+    {
+      "errorMessage": "Синхронный паттерн мышления в асинхронной среде",
+      "area": "messaging",
+      "category": "design-mistake",
+      "symptoms": [
+        "Race conditions: два сообщения читают одно состояние до того, как первое завершит обновление",
+        "Контракт ожидает ответ, которого может не быть — зависает в промежуточном состоянии",
+        "Непредсказуемый порядок обработки сообщений при высокой нагрузке"
+      ],
+      "cause": "Разработчик мыслит в терминах синхронных вызовов (как в Solidity), но в TON каждое сообщение — отдельная транзакция. Между отправкой и получением ответа состояние контракта может измениться другими сообщениями.",
+      "solution": [
+        "Проектируйте контракты как state machines: каждое состояние явно определяет допустимые переходы",
+        "Используйте lock-паттерн: помечайте операцию как in_progress, блокируя конкурентные изменения",
+        "Не храните промежуточное состояние, зависящее от ответа — передавайте контекст в payload сообщения",
+        "Проектируйте каждую операцию как идемпотентную: повторная отправка даёт тот же результат"
+      ],
+      "relatedLessons": [
+        { "title": "State Machines", "slug": "03-actor-model/04-state-machines" },
+        { "title": "Actor Model Fundamentals", "slug": "03-actor-model/01-actor-model-fundamentals" }
+      ]
+    },
+    {
+      "errorMessage": "Отсутствие gas-валидации на входе сообщения",
+      "area": "gas",
+      "category": "cost-overrun",
+      "symptoms": [
+        "Контракт начинает выполнение, но завершается с out-of-gas посередине операции",
+        "Частичное обновление состояния: одна часть данных записана, другая нет",
+        "Пользователь теряет TON — газ потрачен, но операция не завершена"
+      ],
+      "cause": "Контракт не проверяет msg_value при получении сообщения. Если пользователь отправил недостаточно TON для покрытия всей цепочки вычислений и исходящих сообщений, выполнение обрывается на полпути.",
+      "solution": [
+        "Добавьте проверку msg_value >= estimated_gas в самом начале recv_internal",
+        "Рассчитайте минимальный газ с запасом: вычисления + storage fee + forward fee для исходящих сообщений",
+        "При недостаточном газе — немедленно верните средства отправителю вместо начала операции",
+        "Документируйте минимальный msg_value для каждого op-кода в контракте"
+      ],
+      "relatedLessons": [
+        { "title": "Gas Model", "slug": "06-gas-optimization/01-gas-model" },
+        { "title": "Contract Economics", "slug": "06-gas-optimization/03-contract-economics" }
+      ]
+    },
+    {
+      "errorMessage": "Все данные в одном Dictionary без шардирования",
+      "area": "sharding",
+      "category": "scaling-error",
+      "symptoms": [
+        "Gas-стоимость операций растёт логарифмически с числом записей в Dictionary",
+        "Один контракт хранит Dictionary на миллионы ключей — storage fee становится неподъёмным",
+        "Невозможно масштабировать: все операции сериализуются через один аккаунт"
+      ],
+      "cause": "Использование одного большого HashMap/Dictionary в контракте для хранения всех пользовательских данных. В TON каждая операция с Dictionary имеет стоимость O(log n) по глубине дерева Cell, и весь контракт — единая точка сериализации.",
+      "solution": [
+        "Перенесите per-user данные в отдельные child-контракты (sharding по пользователям)",
+        "Используйте Jetton-паттерн: master хранит метаданные, wallet-контракты хранят балансы",
+        "Если Dictionary необходим, ограничьте его размер и используйте пагинацию",
+        "Оцените storage fee заранее: dict_size × cell_cost × time"
+      ],
+      "relatedLessons": [
+        { "title": "Dictionaries", "slug": "05-data-structures/04-dictionaries" },
+        { "title": "Jetton Pattern", "slug": "04-contract-sharding/02-jetton-pattern" }
+      ]
+    },
+    {
+      "errorMessage": "DeFi-протокол без protection от flash-loan атак",
+      "area": "defi",
+      "category": "security-vulnerability",
+      "symptoms": [
+        "Аномальные свопы на DEX с мгновенным возвратом ликвидности",
+        "Oracle-цена манипулирована в рамках одной транзакционной цепочки",
+        "Потеря средств пула ликвидности за одну транзакцию"
+      ],
+      "cause": "В TON асинхронные сообщения затрудняют классические flash-loan атаки, но аналогичные атаки возможны через цепочки сообщений в одном блоке. Протокол полагается только на текущую цену без TWAP или проверки временного окна.",
+      "solution": [
+        "Используйте TWAP (Time-Weighted Average Price) вместо spot price для critical операций",
+        "Добавьте минимальную задержку между deposit и withdraw в пулах ликвидности",
+        "Ограничьте максимальный размер свопа относительно глубины пула",
+        "Реализуйте circuit breaker: приостановка при аномальном движении цены"
+      ],
+      "relatedLessons": [
+        { "title": "DEX и AMM Design", "slug": "07-defi-design/02-dex-amm-design" },
+        { "title": "Oracle Design", "slug": "07-defi-design/03-oracle-design" }
+      ]
+    },
+    {
+      "errorMessage": "Жёсткая привязка к конкретному адресу контракта",
+      "area": "architecture",
+      "category": "integration-error",
+      "symptoms": [
+        "После обновления контракта все интеграции ломаются — адрес изменился",
+        "Невозможно мигрировать на новую версию без координации со всеми клиентами",
+        "Хардкод адресов в нескольких контрактах создаёт хрупкую связность"
+      ],
+      "cause": "Контракты ссылаются друг на друга через захардкоженные адреса вместо registry-паттерна или deterministic addressing. При обновлении одного контракта вся цепочка зависимостей ломается.",
+      "solution": [
+        "Используйте registry-контракт: единая точка разрешения адресов по именам/ключам",
+        "Применяйте deterministic addressing: адрес вычисляется из init_state, а не хранится",
+        "Реализуйте proxy-паттерн: стабильный адрес прокси, обновляемая логика за ним",
+        "При необходимости хардкода — выносите адреса в configurable storage, а не в код"
+      ],
+      "relatedLessons": [
+        { "title": "Deterministic Addresses", "slug": "04-contract-sharding/04-deterministic-addresses" },
+        { "title": "Security и Upgradability", "slug": "11-security/01-security-upgradability" }
+      ]
+    },
+    {
+      "errorMessage": "Отсутствие обработки partial execution при out-of-gas",
+      "area": "gas",
+      "category": "design-mistake",
+      "symptoms": [
+        "Контракт обработал 3 из 5 переводов в цикле, потом закончился газ",
+        "Данные в Dictionary частично обновлены — часть записей в новом формате, часть в старом",
+        "Пользователь видит inconsistent state после неудачной транзакции"
+      ],
+      "cause": "Операции, требующие итерации по коллекции (batch-переводы, массовые обновления), не учитывают, что газ может закончиться на любой итерации. TVM не откатывает storage-изменения при out-of-gas.",
+      "solution": [
+        "Проектируйте batch-операции с continuation: обработайте N элементов, отправьте себе сообщение с оставшимися",
+        "Храните cursor/offset для возобновления обработки с точки остановки",
+        "Рассчитайте газ на одну итерацию и проверяйте остаток газа перед каждой итерацией",
+        "Предпочитайте sharded-подход: каждый элемент обрабатывается отдельным контрактом"
+      ],
+      "relatedLessons": [
+        { "title": "Optimization Techniques", "slug": "06-gas-optimization/02-optimization-techniques" },
+        { "title": "Custom Sharded Contracts", "slug": "04-contract-sharding/05-custom-sharded-contracts" }
+      ]
+    },
+    {
+      "errorMessage": "Jetton без отдельных wallet-контрактов",
+      "area": "sharding",
+      "category": "scaling-error",
+      "symptoms": [
+        "Все переводы токенов проходят через один minter-контракт",
+        "Gas растёт с числом держателей — Dictionary балансов увеличивается",
+        "Переводы между пользователями невозможно параллелизировать"
+      ],
+      "cause": "Реализация токена по ERC-20 паттерну: один контракт хранит mapping(address => balance). В TON это уничтожает шардирование — все операции сериализуются через один аккаунт вместо распределения по шардам.",
+      "solution": [
+        "Следуйте стандарту TEP-74 (Jetton): minter + per-user wallet контракты",
+        "Каждый wallet-контракт хранит баланс своего владельца и обрабатывает переводы",
+        "Transfer: wallet_A отправляет сообщение wallet_B напрямую — без участия minter",
+        "Minter используется только для mint/burn и хранения метаданных токена"
+      ],
+      "relatedLessons": [
+        { "title": "Jetton Pattern", "slug": "04-contract-sharding/02-jetton-pattern" },
+        { "title": "Token System Design", "slug": "08-token-design/01-token-system-design" }
+      ]
+    },
+    {
+      "errorMessage": "Отсутствие replay protection в контракте",
+      "area": "security",
+      "category": "security-vulnerability",
+      "symptoms": [
+        "Одна и та же транзакция может быть отправлена повторно с тем же эффектом",
+        "Пользователь получает двойное начисление при повторной отправке сообщения",
+        "Атакующий перехватывает и переигрывает успешные транзакции"
+      ],
+      "cause": "Контракт не использует seqno, query_id или другой механизм для отслеживания уже обработанных сообщений. Каждое входящее сообщение с одинаковым payload обрабатывается как новое.",
+      "solution": [
+        "Для external messages: используйте seqno (sequence number) с инкрементом при каждой обработке",
+        "Для internal messages: используйте уникальный query_id и храните set обработанных ID",
+        "Устанавливайте msg_valid_until для ограничения времени жизни сообщения",
+        "Регулярно очищайте set обработанных query_id, удаляя записи старше TTL"
+      ],
+      "relatedLessons": [
+        { "title": "Security и Upgradability", "slug": "11-security/01-security-upgradability" },
+        { "title": "Actor Model Fundamentals", "slug": "03-actor-model/01-actor-model-fundamentals" }
+      ]
+    },
+    {
+      "errorMessage": "Принятие сообщений без проверки sender через init_state",
+      "area": "security",
+      "category": "security-vulnerability",
+      "symptoms": [
+        "Контракт принимает поддельные сообщения от произвольных адресов",
+        "Атакующий имитирует child-контракт и вызывает привилегированные операции на master",
+        "Средства выведены через фальшивый wallet-контракт"
+      ],
+      "cause": "Master-контракт проверяет sender_address, но не верифицирует, что отправитель — настоящий child-контракт с правильным init_state. В TON адрес вычисляется из init_state — проверка адреса без проверки кода недостаточна.",
+      "solution": [
+        "Вычисляйте ожидаемый адрес отправителя из init_state: hash(state_init) должен совпадать с sender",
+        "Храните code hash child-контрактов в master и проверяйте при каждом входящем сообщении",
+        "Не доверяйте sender_address без верификации — любой может задеплоить контракт с произвольным адресом",
+        "Используйте паттерн из TEP-74: master знает wallet_code и вычисляет адреса детерминистически"
+      ],
+      "relatedLessons": [
+        { "title": "Deterministic Addresses", "slug": "04-contract-sharding/04-deterministic-addresses" },
+        { "title": "Security и Upgradability", "slug": "11-security/01-security-upgradability" }
+      ]
+    },
+    {
+      "errorMessage": "Неоптимальная сериализация данных в Cell tree",
+      "area": "architecture",
+      "category": "cost-overrun",
+      "symptoms": [
+        "Storage fee непропорционально высок для объёма хранимых данных",
+        "Операции чтения/записи тратят больше газа, чем ожидалось",
+        "Cell overflow: данные не помещаются в 1023 бита одной Cell"
+      ],
+      "cause": "Данные упакованы без учёта структуры Cell tree в TVM. Неправильный порядок полей, избыточные Cell reference, неиспользование bits для маленьких значений — всё увеличивает число Cell и стоимость хранения.",
+      "solution": [
+        "Группируйте часто читаемые поля в root Cell — минимизируйте traversal depth",
+        "Используйте bit-packing: bool = 1 bit, small int = минимальное число бит вместо полных 256",
+        "Размещайте Optional-поля в отдельных ref-Cell — не тратьте биты root Cell на Maybe-обёртки",
+        "Профилируйте storage fee: подсчитайте cells × bits и сравните с оптимальной упаковкой"
+      ],
+      "relatedLessons": [
+        { "title": "Cells", "slug": "05-data-structures/01-cells" },
+        { "title": "Storage Optimization", "slug": "05-data-structures/05-storage-optimization" }
+      ]
+    },
+    {
+      "errorMessage": "Отсутствие мониторинга и alerting в production",
+      "area": "production",
+      "category": "design-mistake",
+      "symptoms": [
+        "Проблемы обнаруживаются, когда пользователи жалуются, а не по метрикам",
+        "Невозможно определить, когда контракт перестал обрабатывать сообщения",
+        "Нет visibility в баланс газа контрактов — контракт замерзает неожиданно"
+      ],
+      "cause": "Разработчик сфокусирован на функциональности контрактов, но не выстраивает off-chain мониторинг. Без наблюдения за балансами, throughput и error rate проблемы обнаруживаются слишком поздно.",
+      "solution": [
+        "Настройте индексер (TON Index, custom) для отслеживания транзакций ваших контрактов",
+        "Мониторьте баланс контрактов — alert при приближении к rent-due threshold",
+        "Отслеживайте bounce rate: рост % bounced сообщений указывает на системную проблему",
+        "Настройте дашборд с метриками: TPS, average gas per tx, error rate, message latency"
+      ],
+      "relatedLessons": [
+        { "title": "Production Operations", "slug": "12-production-ops/01-production-operations" },
+        { "title": "DeFi Case Studies", "slug": "07-defi-design/04-case-studies" }
+      ]
+    },
+    {
+      "errorMessage": "Игнорирование exit codes при обработке ответных сообщений",
+      "area": "messaging",
+      "category": "integration-error",
+      "symptoms": [
+        "Контракт считает операцию успешной, хотя вызванный контракт вернул ошибку",
+        "Средства списаны, но целевая операция не выполнена",
+        "Сложно отлаживать: нет информации о причине неудачи в цепочке сообщений"
+      ],
+      "cause": "При получении ответного сообщения контракт не проверяет exit_code или op-код ответа. Успешное получение сообщения не означает успешное выполнение операции на стороне получателя.",
+      "solution": [
+        "Определите протокол ответных сообщений: отдельные op-коды для success и error",
+        "Проверяйте exit_code в bounced messages: code = 0xFFFF означает ошибку выполнения",
+        "Логируйте результаты в emit-event для off-chain мониторинга",
+        "Реализуйте timeout: если ответ не получен за N секунд, запускайте recovery procedure"
+      ],
+      "relatedLessons": [
+        { "title": "Message Flow Design", "slug": "03-actor-model/02-message-flow-design" },
+        { "title": "Parallel Messages", "slug": "03-actor-model/05-parallel-messages" }
+      ]
+    },
+    {
+      "errorMessage": "Переусложнённая TL-B схема данных",
+      "area": "architecture",
+      "category": "design-mistake",
+      "symptoms": [
+        "Сериализация/десериализация съедает значительную часть газа каждой транзакции",
+        "Новые разработчики не могут разобраться в формате данных контракта",
+        "Ошибки при обновлении схемы — новые поля ломают парсинг старых данных"
+      ],
+      "cause": "Схема данных спроектирована без учёта частоты доступа к полям и cost модели TVM. Глубокая вложенность Cell, неиспользуемые поля в hot path, отсутствие версионирования.",
+      "solution": [
+        "Следуйте принципу: hot fields в root Cell, cold fields в глубоких ref",
+        "Добавьте version byte в начало root Cell для совместимости при обновлениях",
+        "Минимизируйте глубину Cell tree: каждый ref — дополнительный gas за cell load",
+        "Используйте TL-B компилятор для генерации сериализаторов вместо ручного побитового парсинга"
+      ],
+      "relatedLessons": [
+        { "title": "TL-B Schemas", "slug": "05-data-structures/03-tlb-schemas" },
+        { "title": "BOC Serialization", "slug": "05-data-structures/02-boc-serialization" }
+      ]
+    },
+    {
+      "errorMessage": "Отсутствие механизма обновления контрактов",
+      "area": "security",
+      "category": "design-mistake",
+      "symptoms": [
+        "Обнаружен баг в production-контракте — невозможно исправить без миграции всех пользователей",
+        "Средства заблокированы в контракте с неисправимой ошибкой",
+        "Обновление требует координации с каждым пользователем для миграции на новый адрес"
+      ],
+      "cause": "Контракт задеплоен без set_code/set_data механизма или governance для обновлений. В отличие от Ethereum proxy pattern, TON позволяет менять код контракта через SETCODE — но эту возможность нужно заложить при проектировании.",
+      "solution": [
+        "Реализуйте admin-op для set_code с проверкой авторизации (governance multisig)",
+        "Предусмотрите data migration: при смене кода новая версия должна уметь парсить старый формат данных",
+        "Для decentralized протоколов используйте governance voting перед обновлением",
+        "Добавьте timelock: между объявлением обновления и его применением должна быть задержка"
+      ],
+      "relatedLessons": [
+        { "title": "Security и Upgradability", "slug": "11-security/01-security-upgradability" },
+        { "title": "Design Patterns", "slug": "01-sd-fundamentals/03-design-patterns" }
+      ]
+    },
+    {
+      "errorMessage": "Неправильный расчёт forward_fee для цепочки сообщений",
+      "area": "gas",
+      "category": "cost-overrun",
+      "symptoms": [
+        "Последнее сообщение в цепочке не доставляется — недостаточно TON для forward_fee",
+        "Пользователь отправляет 1 TON, но до конечного получателя доходит 0.01 TON",
+        "Часть цепочки выполняется, часть нет — inconsistent state между контрактами"
+      ],
+      "cause": "При проектировании цепочки A→B→C→D каждое звено потребляет gas + forward_fee. Разработчик не учёл кумулятивные затраты и не зарезервировал достаточно TON на старте цепочки.",
+      "solution": [
+        "Рассчитайте total_cost = sum(gas_i + forward_fee_i) для всей цепочки перед отправкой",
+        "Используйте RAWRESERVE для гарантии сохранения minimum balance на каждом этапе",
+        "Передавайте оставшийся баланс через flag 64 (carry remaining value) где возможно",
+        "Добавьте buffer 20-30% к расчётному gas на случай увеличения storage fee"
+      ],
+      "relatedLessons": [
+        { "title": "Gas Model", "slug": "06-gas-optimization/01-gas-model" },
+        { "title": "Message Flow Design", "slug": "03-actor-model/02-message-flow-design" }
+      ]
+    },
+    {
+      "errorMessage": "Oracle с единой точкой отказа",
+      "area": "defi",
+      "category": "security-vulnerability",
+      "symptoms": [
+        "DeFi-протокол использует цену из одного источника — при его компрометации все операции под угрозой",
+        "Oracle не обновлялся 24 часа — протокол работает с устаревшей ценой",
+        "Манипуляция ценой одного oracle позволяет провести арбитражную атаку"
+      ],
+      "cause": "Протокол полагается на единственный oracle-контракт для ценовых данных. Отсутствие агрегации, проверки freshness и fallback-механизма создаёт single point of failure.",
+      "solution": [
+        "Агрегируйте данные из нескольких oracle источников: median(price_1, price_2, price_3)",
+        "Проверяйте freshness: отклоняйте цену, если timestamp > max_staleness",
+        "Установите price deviation threshold: если новая цена отличается от предыдущей более чем на X% — pause protocol",
+        "Реализуйте fallback oracle: при недоступности основного — переключение на резервный"
+      ],
+      "relatedLessons": [
+        { "title": "Oracle Design", "slug": "07-defi-design/03-oracle-design" },
+        { "title": "DeFi Overview", "slug": "07-defi-design/01-defi-overview" }
+      ]
+    },
+    {
+      "errorMessage": "Mini App без graceful degradation при сетевых ошибках",
+      "area": "production",
+      "category": "integration-error",
+      "symptoms": [
+        "Приложение показывает белый экран при потере соединения с TON RPC",
+        "Пользователь нажимает кнопку оплаты, ничего не происходит — нет feedback",
+        "Crash при таймауте запроса к блокчейну — приложение не обрабатывает network errors"
+      ],
+      "cause": "Mini App разработан для happy path: все запросы к TON API и RPC успешны. Отсутствует обработка таймаутов, retry-логика и UI-индикация ошибок. Telegram Mini App работает в мобильном контексте с нестабильным интернетом.",
+      "solution": [
+        "Реализуйте retry с exponential backoff для всех blockchain-запросов",
+        "Показывайте loading state и error state с кнопкой retry для каждой blockchain-операции",
+        "Кэшируйте последнее известное состояние — показывайте stale data с пометкой вместо пустого экрана",
+        "Используйте optimistic UI: показывайте ожидаемый результат, откатывайте при ошибке"
+      ],
+      "relatedLessons": [
+        { "title": "Mini Apps Architecture", "slug": "09-mini-apps/01-mini-apps-architecture" },
+        { "title": "Production Operations", "slug": "12-production-ops/01-production-operations" }
+      ]
+    },
+    {
+      "errorMessage": "NFT-коллекция без factory pattern",
+      "area": "sharding",
+      "category": "scaling-error",
+      "symptoms": [
+        "Mint 10 000 NFT требует 10 000 транзакций через один контракт — bottleneck",
+        "Метаданные всех NFT хранятся в одном Dictionary — storage fee растёт квадратично",
+        "Невозможно transfer NFT без участия collection-контракта"
+      ],
+      "cause": "Вся коллекция реализована как один контракт с Dictionary of items. Каждая операция (mint, transfer, burn) проходит через единственный аккаунт. TEP-62 NFT Standard предполагает отдельные контракты для каждого item.",
+      "solution": [
+        "Следуйте TEP-62: collection-контракт создаёт отдельный NFT Item контракт при каждом mint",
+        "Каждый NFT Item — независимый контракт со своим owner, content и transfer логикой",
+        "Transfer выполняется напрямую между NFT Item и новым owner — collection не участвует",
+        "Для batch mint используйте параллельные сообщения из collection к нескольким NFT Items"
+      ],
+      "relatedLessons": [
+        { "title": "NFT Factory Pattern", "slug": "04-contract-sharding/03-nft-factory-pattern" },
+        { "title": "Sharding-Friendly Design", "slug": "04-contract-sharding/01-sharding-friendly-design" }
+      ]
+    }
+  ]
+}

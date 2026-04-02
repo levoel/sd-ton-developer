@@ -1,0 +1,418 @@
+{
+  "categories": [
+    {
+      "id": "sd-fundamentals",
+      "name": "Основы System Design",
+      "terms": [
+        {
+          "term": "System Design для блокчейна",
+          "termEn": "Blockchain System Design",
+          "definition": "Дисциплина проектирования распределённых систем на базе блокчейна с учётом специфических ограничений: детерминированное исполнение, неизменяемость данных, экономические стимулы и ограниченные вычислительные ресурсы. В отличие от классического System Design, здесь каждое решение имеет прямые экономические последствия в виде комиссий.",
+          "example": "// Классический подход: масштабируем сервер вертикально\n// Блокчейн SD: масштабируем через шардинг контрактов\n\n// Вместо одного контракта-монолита:\ncontract MonolithDEX { /* всё в одном */ }\n\n// Проектируем систему контрактов:\ncontract Router { /* маршрутизация */ }\ncontract Pool { /* один пул ликвидности */ }\ncontract LPWallet { /* кошелёк LP-токенов */ }",
+          "relatedLessons": [
+            { "title": "Зачем System Design", "slug": "01-sd-fundamentals/01-why-system-design" },
+            { "title": "Добро пожаловать", "slug": "00-course-intro/01-welcome" }
+          ]
+        },
+        {
+          "term": "CAP-теорема в TON",
+          "termEn": "CAP Theorem in TON",
+          "definition": "Применение теоремы CAP к архитектуре TON. TON выбирает Availability и Partition tolerance за счёт eventual consistency между шардами. Это означает, что межшардовые сообщения обрабатываются асинхронно, и контракт не может мгновенно получить актуальное состояние из другого шарда.",
+          "example": "// TON выбирает: AP (доступность + устойчивость к разделению)\n// Следствие: eventual consistency между шардами\n\n// Нельзя:\nlet balance = otherContract.getBalance(); // синхронный вызов\n\n// Нужно проектировать асинхронно:\nsend(SendParameters{\n    to: otherContract,\n    body: RequestBalance{}.toCell()\n});\n// Ответ придёт отдельным сообщением",
+          "relatedLessons": [
+            { "title": "CAP-теорема", "slug": "01-sd-fundamentals/02-cap-theorem" }
+          ]
+        },
+        {
+          "term": "Анализ компромиссов",
+          "termEn": "Tradeoff Analysis",
+          "definition": "Метод систематической оценки архитектурных решений через выявление конкурирующих требований. В контексте TON ключевые оси компромиссов: газ vs UX, децентрализация vs производительность, гибкость vs безопасность. Каждое проектное решение оценивается по влиянию на стоимость, скорость и надёжность.",
+          "example": "// Компромисс: хранение on-chain vs off-chain\n\n// On-chain: дорого, но верифицируемо\ncontract OnChainNFT {\n    metadata: map<Int, Cell>; // ~0.01 TON за ячейку в год\n}\n\n// Off-chain: дёшево, но требует доверия к серверу\ncontract OffChainNFT {\n    contentUrl: String; // только ссылка on-chain\n}",
+          "relatedLessons": [
+            { "title": "Анализ компромиссов", "slug": "01-sd-fundamentals/04-tradeoff-analysis" }
+          ]
+        },
+        {
+          "term": "Паттерны проектирования",
+          "termEn": "Design Patterns",
+          "definition": "Повторяемые архитектурные решения для типовых задач в TON System Design. Включают паттерны декомпозиции контрактов (Router-Pool, Master-Child), паттерны обмена сообщениями (Request-Response, Notification), паттерны масштабирования (Sharded Collection, Factory). Отличаются от классических GoF-паттернов адаптацией к асинхронной actor-модели.",
+          "example": "// Паттерн Master-Child (Factory)\n// Master создаёт дочерние контракты с предсказуемыми адресами\n\ncontract JettonMaster {\n    fun mint(to: Address, amount: Int) {\n        let init = initOf JettonWallet(myAddress(), to);\n        send(SendParameters{\n            to: contractAddress(init),\n            value: ton(\"0.05\"),\n            body: InternalTransfer{amount}.toCell(),\n            code: init.code,\n            data: init.data\n        });\n    }\n}",
+          "relatedLessons": [
+            { "title": "Паттерны проектирования", "slug": "01-sd-fundamentals/03-design-patterns" }
+          ]
+        },
+        {
+          "term": "Фреймворк проектирования",
+          "termEn": "Design Framework",
+          "definition": "Структурированный подход к проектированию систем на TON, состоящий из этапов: сбор требований, выбор архитектуры контрактов, проектирование потоков сообщений, анализ газовых затрат, оценка безопасности и планирование развёртывания. Фреймворк обеспечивает повторяемость процесса и снижает вероятность пропуска критических аспектов.",
+          "example": "// Этапы фреймворка для проектирования DEX:\n// 1. Требования: swap, add/remove liquidity, fees\n// 2. Архитектура: Router → Pool → LP Wallet\n// 3. Потоки: пользователь → Router → Pool → Wallet\n// 4. Газ: оценка цепочки из 3-5 сообщений\n// 5. Безопасность: проверка bounce, replay, overflow\n// 6. Деплой: порядок развёртывания контрактов",
+          "relatedLessons": [
+            { "title": "Фреймворк System Design", "slug": "01-sd-fundamentals/05-sd-framework" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ton-architecture",
+      "name": "Архитектура TON (System Design)",
+      "terms": [
+        {
+          "term": "Многослойная архитектура",
+          "termEn": "Multi-Layer Architecture Design",
+          "definition": "Архитектурный подход TON, разделяющий сеть на слои с различными зонами ответственности: masterchain (координация и консенсус), workchains (исполнение контрактов), shardchains (параллельная обработка подмножеств аккаунтов). При проектировании системы необходимо учитывать стоимость и задержки межслойного взаимодействия.",
+          "example": "// Влияние многослойности на проектирование:\n\n// Слой 1: Masterchain — конфигурация, валидаторы\n// → Не деплоить пользовательские контракты\n\n// Слой 2: Basechain (workchain 0) — смарт-контракты\n// → Основная среда для DeFi, NFT, токенов\n\n// Слой 3: Shardchains — автоматическое разделение\n// → Проектировать контракты sharding-friendly",
+          "relatedLessons": [
+            { "title": "Многослойная архитектура", "slug": "02-ton-architecture/01-multi-layer-architecture" }
+          ]
+        },
+        {
+          "term": "Infinite Sharding (проектное решение)",
+          "termEn": "Infinite Sharding (Design Perspective)",
+          "definition": "Проектное решение TON, при котором каждый аккаунт рассматривается как отдельный шард. С точки зрения System Design это означает, что контракты должны быть самодостаточными: не полагаться на синхронный доступ к данным других контрактов и минимизировать межшардовые зависимости. Это фундаментально отличает проектирование в TON от Ethereum.",
+          "example": "// Ethereum: контракты в одном шарде читают друг друга\nuint price = oracle.getPrice(); // синхронно\n\n// TON: каждый контракт — свой шард\n// Нельзя синхронно прочитать состояние другого контракта\n// Решение: асинхронный запрос-ответ\nsend(RequestPrice{pair: \"TON/USD\"}.toCell());\n// Обработка в receive(PriceResponse)",
+          "relatedLessons": [
+            { "title": "Infinite Sharding", "slug": "02-ton-architecture/02-infinite-sharding" }
+          ]
+        },
+        {
+          "term": "Координация через Masterchain",
+          "termEn": "Masterchain Coordination",
+          "definition": "Архитектурный паттерн, при котором masterchain обеспечивает глобальную согласованность распределённой системы TON. Masterchain хранит хеши блоков всех шардчейнов, что позволяет верифицировать состояние любого шарда. При проектировании критически важных систем это гарантирует финальность транзакций после включения в masterchain блок.",
+          "example": "// Финальность транзакции:\n// 1. Транзакция попадает в блок шардчейна (~2-5 сек)\n// 2. Хеш шардчейн-блока включается в masterchain\n// 3. После этого транзакция финальна\n\n// Для проектирования: ожидание финальности\n// составляет ~6 секунд (1-2 masterchain-блока)\n// Учитывать в UX платёжных систем",
+          "relatedLessons": [
+            { "title": "Консенсус и валидаторы", "slug": "02-ton-architecture/03-consensus-validators" }
+          ]
+        },
+        {
+          "term": "Кросс-чейн сравнительный анализ",
+          "termEn": "Cross-Chain Comparison Patterns",
+          "definition": "Метод анализа архитектурных решений TON через сравнение с Ethereum и Solana. Ключевые различия: синхронная vs асинхронная модель исполнения, единое vs шардированное состояние, EVM vs TVM. Позволяет переносить проверенные паттерны из других экосистем с адаптацией к особенностям TON.",
+          "example": "// Сравнение подходов к DEX:\n\n// Ethereum (синхронная модель):\n// Uniswap: Router вызывает Pool.swap() синхронно\n// Всё в одной транзакции, атомарно\n\n// TON (асинхронная модель):\n// DeDust: Router отправляет сообщение Pool\n// Pool обрабатывает и отправляет результат\n// Цепочка из 3-5 асинхронных сообщений",
+          "relatedLessons": [
+            { "title": "TON vs Ethereum vs Solana", "slug": "02-ton-architecture/04-ton-vs-eth-sol" }
+          ]
+        },
+        {
+          "term": "Архитектурные антипаттерны",
+          "termEn": "Architectural Anti-Patterns",
+          "definition": "Типичные ошибки проектирования в TON: монолитный контракт с множеством ответственностей, предположение о синхронности исполнения, игнорирование bounce-механизма, хранение больших объёмов данных в одном контракте. Распознавание антипаттернов позволяет избежать дорогостоящих переделок.",
+          "example": "// Антипаттерн: God Contract\ncontract BadDEX {\n    pools: map<Address, PoolData>;\n    balances: map<Address, Int>;\n    orders: map<Int, Order>;\n    // Всё в одном контракте → не масштабируется\n}\n\n// Правильно: декомпозиция\ncontract Router { /* маршрутизация */ }\ncontract Pool { /* один пул */ }\ncontract Vault { /* хранение средств */ }",
+          "relatedLessons": [
+            { "title": "Антипаттерны", "slug": "02-ton-architecture/06-anti-patterns" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "actor-messaging",
+      "name": "Actor Model и Messaging",
+      "terms": [
+        {
+          "term": "Actor Model как паттерн проектирования",
+          "termEn": "Actor Model as Design Pattern",
+          "definition": "Модель вычислений, в которой каждый контракт TON является независимым актором с собственным состоянием, обрабатывающим сообщения последовательно. С точки зрения System Design это означает отсутствие shared state между контрактами и необходимость проектирования всех взаимодействий как обмена асинхронными сообщениями.",
+          "example": "// Каждый контракт — актор\n// Принципы:\n// 1. Своё изолированное состояние\n// 2. Обрабатывает сообщения по одному\n// 3. Может отправлять сообщения другим акторам\n// 4. Может создавать новых акторов (deploy)\n\ncontract WalletActor {\n    balance: Int = 0;\n    \n    receive(msg: Deposit) {\n        self.balance += msg.amount;\n        // Отправка сообщения другому актору\n        send(Notification{amount: msg.amount}.toCell());\n    }\n}",
+          "relatedLessons": [
+            { "title": "Основы Actor Model", "slug": "03-actor-model/01-actor-model-fundamentals" }
+          ]
+        },
+        {
+          "term": "Проектирование потоков сообщений",
+          "termEn": "Async Message Flow Design",
+          "definition": "Методика проектирования последовательностей асинхронных сообщений между контрактами TON. Включает определение цепочек сообщений для бизнес-операций, обработку ветвлений при ошибках, расчёт газовых бюджетов для всей цепочки и обеспечение идемпотентности обработки.",
+          "example": "// Поток swap в DEX (5 сообщений):\n//\n// User → Router: запрос swap\n//   Router → Pool: transfer_notification\n//     Pool → JettonWallet: transfer (выход)\n//       JettonWallet → User: transfer_notification\n//       JettonWallet → Pool: excesses (сдача газа)\n//\n// Gas budget: 0.3 TON (0.06 на каждое сообщение)",
+          "relatedLessons": [
+            { "title": "Проектирование потоков сообщений", "slug": "03-actor-model/02-message-flow-design" }
+          ]
+        },
+        {
+          "term": "Стратегии обработки bounce",
+          "termEn": "Bounce Handling Strategies",
+          "definition": "Набор проектных решений для обработки отклонённых сообщений в TON. Bounce-сообщение возвращается отправителю, когда получатель не может обработать запрос (недостаточно газа, ошибка в коде, контракт не развёрнут). Стратегии включают: откат состояния, повторную отправку, эскалацию ошибки и graceful degradation.",
+          "example": "// Стратегия: откат при bounce\ncontract SafeTransfer {\n    pendingAmount: Int = 0;\n    \n    // Отправка с сохранением pending\n    fun transfer(to: Address, amount: Int) {\n        self.pendingAmount = amount;\n        self.balance -= amount;\n        send(SendParameters{to, value: amount, bounce: true});\n    }\n    \n    // Откат при bounce\n    bounced(msg: Slice) {\n        self.balance += self.pendingAmount;\n        self.pendingAmount = 0;\n    }\n}",
+          "relatedLessons": [
+            { "title": "Обработка bounce", "slug": "03-actor-model/03-bounce-handling" }
+          ]
+        },
+        {
+          "term": "Проектирование конечных автоматов",
+          "termEn": "State Machine Design",
+          "definition": "Паттерн проектирования контрактов TON как конечных автоматов с явными состояниями и переходами. Каждое сообщение может инициировать переход между состояниями. Паттерн обеспечивает предсказуемость поведения, упрощает аудит безопасности и позволяет обрабатывать сложные многошаговые процессы (escrow, аукционы, голосования).",
+          "example": "// Escrow как конечный автомат\ncontract Escrow {\n    state: Int = 0; // 0=created, 1=funded, 2=released, 3=refunded\n    \n    receive(msg: Fund) {\n        require(self.state == 0, \"Wrong state\");\n        self.state = 1;\n    }\n    \n    receive(msg: Release) {\n        require(self.state == 1, \"Wrong state\");\n        require(sender() == self.buyer, \"Not buyer\");\n        self.state = 2;\n        send(/* transfer to seller */);\n    }\n}",
+          "relatedLessons": [
+            { "title": "Конечные автоматы", "slug": "03-actor-model/04-state-machines" }
+          ]
+        },
+        {
+          "term": "Параллельная оркестрация сообщений",
+          "termEn": "Parallel Message Orchestration",
+          "definition": "Паттерн проектирования, при котором контракт отправляет несколько сообщений параллельно и собирает результаты. В TON параллельные сообщения обрабатываются независимо в разных шардах, что повышает пропускную способность. Сложность заключается в сборе результатов и обработке частичных отказов.",
+          "example": "// Scatter-Gather паттерн\ncontract Aggregator {\n    responses: Int = 0;\n    expected: Int = 3;\n    \n    fun queryAll() {\n        // Отправка параллельно в 3 оракула\n        send(/* → Oracle A */);\n        send(/* → Oracle B */);\n        send(/* → Oracle C */);\n    }\n    \n    receive(msg: OracleResponse) {\n        self.responses += 1;\n        // Действие после сбора всех ответов\n        if (self.responses == self.expected) {\n            self.finalize();\n        }\n    }\n}",
+          "relatedLessons": [
+            { "title": "Параллельные сообщения", "slug": "03-actor-model/05-parallel-messages" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sharding-patterns",
+      "name": "Sharding Patterns",
+      "terms": [
+        {
+          "term": "Sharding-Friendly контракты",
+          "termEn": "Sharding-Friendly Contract Design",
+          "definition": "Подход к проектированию контрактов, оптимизированный для работы в шардированной среде TON. Ключевые принципы: минимизация межшардовых зависимостей, распределение состояния по множеству мелких контрактов, использование предсказуемых адресов и избегание глобальных блокировок.",
+          "example": "// Не sharding-friendly: одна точка сбора\ncontract CentralLedger {\n    allBalances: map<Address, Int>; // все данные в одном шарде\n}\n\n// Sharding-friendly: распределённая архитектура\ncontract UserWallet {\n    balance: Int; // каждый пользователь в своём шарде\n}\ncontract Master {\n    totalSupply: Int; // только агрегированные данные\n}",
+          "relatedLessons": [
+            { "title": "Sharding-Friendly проектирование", "slug": "04-contract-sharding/01-sharding-friendly-design" }
+          ]
+        },
+        {
+          "term": "Jetton Sharded паттерн",
+          "termEn": "Jetton Sharded Pattern",
+          "definition": "Эталонный паттерн проектирования токенов в TON, при котором каждый владелец получает отдельный контракт-кошелёк (JettonWallet). Master-контракт отвечает за метаданные и общую эмиссию, а кошельки распределяют нагрузку по шардам. Этот паттерн обеспечивает горизонтальное масштабирование при любом количестве держателей.",
+          "example": "// Архитектура Jetton:\n// JettonMaster (1 контракт)\n//   ├── JettonWallet (owner: Alice) — шард A\n//   ├── JettonWallet (owner: Bob)   — шард B\n//   └── JettonWallet (owner: Carol) — шард C\n//\n// Transfer: Wallet_A → Wallet_B (прямой, без Master)\n// Mint: Master → новый Wallet\n// Burn: Wallet → Master",
+          "relatedLessons": [
+            { "title": "Паттерн Jetton", "slug": "04-contract-sharding/02-jetton-pattern" }
+          ]
+        },
+        {
+          "term": "NFT Factory паттерн",
+          "termEn": "NFT Factory Pattern",
+          "definition": "Паттерн проектирования коллекций NFT в TON, где Collection-контракт выступает фабрикой для создания отдельных NFT Item контрактов. Каждый Item содержит собственные метаданные и логику владения. Паттерн обеспечивает масштабирование коллекций до миллионов элементов за счёт распределения по шардам.",
+          "example": "// NFT Collection как фабрика:\n// NFTCollection (контракт-фабрика)\n//   ├── NFTItem #0 (index: 0, owner: Alice)\n//   ├── NFTItem #1 (index: 1, owner: Bob)\n//   └── NFTItem #N (index: N, owner: ...)\n//\n// Адрес каждого Item детерминирован:\n// addr = hash(collection_addr + item_index)\n// → Можно вычислить без запроса к сети",
+          "relatedLessons": [
+            { "title": "Паттерн NFT Factory", "slug": "04-contract-sharding/03-nft-factory-pattern" }
+          ]
+        },
+        {
+          "term": "Детерминированная деривация адресов",
+          "termEn": "Deterministic Address Derivation",
+          "definition": "Техника вычисления адреса контракта до его развёртывания на основе init-кода и начальных данных. В TON адрес — это хеш StateInit (code + data), что позволяет заранее знать адрес будущего контракта. Критически важна для sharded-систем, где контракт должен знать адреса партнёров без on-chain запросов.",
+          "example": "// Вычисление адреса JettonWallet до деплоя:\nlet walletInit = initOf JettonWallet(jettonMaster, owner);\nlet walletAddress = contractAddress(walletInit);\n\n// Теперь можно отправить сообщение на walletAddress\n// даже если контракт ещё не развёрнут —\n// первое сообщение с StateInit создаст его\nsend(SendParameters{\n    to: walletAddress,\n    value: ton(\"0.05\"),\n    code: walletInit.code,\n    data: walletInit.data,\n    body: Mint{amount: 1000}.toCell()\n});",
+          "relatedLessons": [
+            { "title": "Детерминированные адреса", "slug": "04-contract-sharding/04-deterministic-addresses" }
+          ]
+        },
+        {
+          "term": "Стратегии пользовательского шардинга",
+          "termEn": "Custom Sharding Strategies",
+          "definition": "Проектирование собственных паттернов распределения контрактов по шардам за пределами стандартных Jetton/NFT. Включает стратегии: шардинг по пользователям, по временным периодам, по географическим зонам, гибридный шардинг. Выбор стратегии зависит от паттернов доступа и требований к консистентности.",
+          "example": "// Шардинг по эпохам для системы голосования:\n// VoteMain\n//   ├── VoteEpoch(round: 1) — завершённый\n//   ├── VoteEpoch(round: 2) — завершённый\n//   └── VoteEpoch(round: 3) — активный\n//       ├── VoteBallot(voter: Alice)\n//       └── VoteBallot(voter: Bob)\n//\n// Каждый раунд — отдельный контракт\n// Старые раунды не нагружают сеть",
+          "relatedLessons": [
+            { "title": "Пользовательские sharded контракты", "slug": "04-contract-sharding/05-custom-sharded-contracts" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "data-structures",
+      "name": "Структуры данных (System Design)",
+      "terms": [
+        {
+          "term": "Проектирование cell-деревьев",
+          "termEn": "Cell Tree Design",
+          "definition": "Методика организации данных контракта в виде дерева ячеек (cells) с учётом ограничений TON: максимум 1023 бит и 4 ссылки на ячейку. Глубина дерева влияет на стоимость чтения и записи. Оптимальное проектирование балансирует между плоскими структурами (дешёвое чтение) и глубокими (экономия хранения).",
+          "example": "// Плоская структура (быстрый доступ, дорогое хранение):\n// Root → [balance, owner, data1, data2]\n// Глубина: 1, доступ: O(1)\n\n// Глубокая структура (медленный доступ, дешёвое хранение):\n// Root → [balance, ref→[owner, ref→[data1, data2]]]\n// Глубина: 3, доступ: O(depth)\n\n// Оптимальный баланс: часто читаемые данные — наверху\n// Root → [balance, owner, ref→[metadata]]",
+          "relatedLessons": [
+            { "title": "Ячейки", "slug": "05-data-structures/01-cells" }
+          ]
+        },
+        {
+          "term": "Стратегия сериализации BoC",
+          "termEn": "BoC Serialization Strategy",
+          "definition": "Проектирование формата хранения и передачи данных через Bag of Cells с учётом газовых затрат. Выбор между inline-хранением (данные в ячейке сообщения) и reference-хранением (данные в отдельных ячейках) влияет на стоимость парсинга. Стратегия сериализации определяет, как структурировать данные для минимизации газа при типичных операциях.",
+          "example": "// Стратегия: минимизация gas при частых операциях\n\n// Частая операция — проверка баланса:\n// Хранить balance в первых битах корневой ячейки\nbeginCell()\n    .storeCoins(balance)    // первым — частый доступ\n    .storeAddress(owner)    // вторым\n    .storeRef(metadata)     // редко читаемое — в ref\n    .endCell()",
+          "relatedLessons": [
+            { "title": "Сериализация BoC", "slug": "05-data-structures/02-boc-serialization" }
+          ]
+        },
+        {
+          "term": "Проектирование TL-B схем",
+          "termEn": "TL-B Schema Design",
+          "definition": "Методика создания Type Language — Binary схем для описания формата данных в TON. TL-B схемы определяют бинарную раскладку данных в ячейках и используются для сериализации/десериализации сообщений и хранилища. Хорошая схема обеспечивает компактность, версионируемость и обратную совместимость.",
+          "example": "// TL-B схема для токен-трансфера:\n// transfer#0f8a7ea5\n//   query_id:uint64\n//   amount:(VarUInteger 16)\n//   destination:MsgAddress\n//   response_destination:MsgAddress\n//   custom_payload:(Maybe ^Cell)\n//   forward_ton_amount:(VarUInteger 16)\n//   forward_payload:(Either Cell ^Cell)\n//   = InternalMsgBody;\n//\n// Opcode 0f8a7ea5 — уникальный идентификатор",
+          "relatedLessons": [
+            { "title": "TL-B схемы", "slug": "05-data-structures/03-tlb-schemas" }
+          ]
+        },
+        {
+          "term": "Оптимизация словарей",
+          "termEn": "Dictionary Optimization",
+          "definition": "Техники эффективного использования HashmapE (словарей) в контрактах TON. Словари хранятся как Patricia-деревья в ячейках, и каждая операция требует обхода дерева. Оптимизации включают: выбор размера ключа, пакетные обновления, lazy-загрузку поддеревьев и вынос редко используемых данных в дочерние контракты.",
+          "example": "// Проблема: словарь с 10000 записями\n// Каждая запись/чтение — обход дерева O(key_bits)\n\n// Оптимизация 1: уменьшить размер ключа\n// map<Int as uint256, V>  → дорого (256 бит)\n// map<Int as uint32, V>   → дёшево (32 бита)\n\n// Оптимизация 2: шардинг словаря\n// Вместо одного большого словаря:\n// Master.users: map<Address, Data> // 10000 записей\n// Распределить по дочерним контрактам:\n// UserContract(owner).data // 1 запись на контракт",
+          "relatedLessons": [
+            { "title": "Словари", "slug": "05-data-structures/04-dictionaries" }
+          ]
+        },
+        {
+          "term": "Оптимизация стоимости хранения",
+          "termEn": "Storage Cost Optimization",
+          "definition": "Стратегии минимизации расходов на хранение данных в контрактах TON. Каждая ячейка стоит ~0.000000033 TON за бит в год. При проектировании системы необходимо оценивать TCO хранения и выбирать между on-chain (дорого, верифицируемо) и off-chain (дёшево, требует доверия) хранением.",
+          "example": "// Расчёт стоимости хранения NFT-коллекции:\n// 10000 NFT × 1 KB metadata on-chain\n// = 10 MB × 0.000000033 TON/бит/год\n// = ~2.6 TON/год\n\n// Альтернатива: off-chain metadata\n// 10000 NFT × 32 байта (ссылка на IPFS)\n// = 320 KB → ~0.08 TON/год\n\n// Решение: гибридный подход\n// Критичные данные (owner, index) — on-chain\n// Медиа и описание — IPFS/TON Storage",
+          "relatedLessons": [
+            { "title": "Оптимизация хранения", "slug": "05-data-structures/05-storage-optimization" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gas-economics",
+      "name": "Gas и экономика контрактов",
+      "terms": [
+        {
+          "term": "Gas-модель как ограничение проектирования",
+          "termEn": "Gas Model as Design Constraint",
+          "definition": "Подход к газовой модели TON не как к техническому ограничению, а как к ключевому фактору архитектурных решений. Стоимость вычислений, хранения и пересылки сообщений определяет выбор между альтернативными архитектурами. Контракт, дешёвый в деплое, может оказаться дорогим в эксплуатации.",
+          "example": "// Gas влияет на архитектуру:\n\n// Вариант A: один контракт, сложная логика\n// Deploy: 0.05 TON\n// Каждый вызов: 0.1 TON (много вычислений)\n// 1000 вызовов: 100 TON\n\n// Вариант B: система контрактов, простая логика\n// Deploy: 0.2 TON (4 контракта)\n// Каждый вызов: 0.03 TON (параллельно)\n// 1000 вызовов: 30 TON\n\n// Вариант B дешевле при > 200 вызовах",
+          "relatedLessons": [
+            { "title": "Модель газа", "slug": "06-gas-optimization/01-gas-model" }
+          ]
+        },
+        {
+          "term": "Паттерны газовой оптимизации",
+          "termEn": "Gas Optimization Patterns",
+          "definition": "Набор техник снижения газовых затрат при сохранении функциональности. Включают: оптимизацию раскладки данных в ячейках, минимизацию количества сообщений в цепочке, batch-операции, lazy-вычисления, кеширование промежуточных результатов и выбор оптимальных структур данных.",
+          "example": "// Паттерн: batch-обработка вместо поштучной\n\n// Неоптимально: 100 отдельных сообщений\nfor (let i = 0; i < 100; i++) {\n    send(Transfer{to: recipients[i]});\n}\n// Gas: 100 × 0.01 = 1 TON\n\n// Оптимально: batch через merkle-proof\nsend(BatchTransfer{\n    merkleRoot: root,\n    count: 100\n});\n// Gas: 0.05 TON (один вызов с proof)",
+          "relatedLessons": [
+            { "title": "Техники оптимизации", "slug": "06-gas-optimization/02-optimization-techniques" }
+          ]
+        },
+        {
+          "term": "Экономическое моделирование контрактов",
+          "termEn": "Contract Economics Modeling",
+          "definition": "Анализ экономической устойчивости системы контрактов: доходы (комиссии, стейкинг), расходы (газ, хранение, maintenance), точка безубыточности. Моделирование помогает определить оптимальную структуру комиссий, минимальный TVL для самоокупаемости и стратегию управления treasury.",
+          "example": "// Экономическая модель DEX-пула:\n// Доходы:\n//   Swap fee: 0.3% от объёма\n//   Ежедневный объём: 100,000 TON\n//   Доход: 300 TON/день\n//\n// Расходы:\n//   Gas на swap: 0.03 TON × 500 = 15 TON/день\n//   Хранение: 0.01 TON/день\n//   Итого: ~15 TON/день\n//\n// Прибыль: ~285 TON/день\n// Breakeven при объёме: ~5000 TON/день",
+          "relatedLessons": [
+            { "title": "Экономика контрактов", "slug": "06-gas-optimization/03-contract-economics" }
+          ]
+        },
+        {
+          "term": "Оценка комиссий",
+          "termEn": "Fee Estimation",
+          "definition": "Методика предварительного расчёта стоимости операций в TON для UX и проектирования. Включает три компонента: compute fee (вычисления TVM), storage fee (хранение данных), forward fee (пересылка сообщений). Точная оценка позволяет показывать пользователю ожидаемую стоимость транзакции до подтверждения.",
+          "example": "// Оценка gas для цепочки swap:\n\n// Шаг 1: User → Router (compute: ~3000 gas)\n// forward_fee: ~0.005 TON\n\n// Шаг 2: Router → Pool (compute: ~5000 gas)\n// forward_fee: ~0.005 TON\n\n// Шаг 3: Pool → JettonWallet (compute: ~4000 gas)\n// forward_fee: ~0.005 TON\n\n// Итого estimate: ~0.03 TON\n// Рекомендация UX: отправлять 0.05 TON\n// Разница вернётся через excess-сообщение",
+          "relatedLessons": [
+            { "title": "Модель газа", "slug": "06-gas-optimization/01-gas-model" },
+            { "title": "Техники оптимизации", "slug": "06-gas-optimization/02-optimization-techniques" }
+          ]
+        },
+        {
+          "term": "Проектирование compute-бюджета",
+          "termEn": "Compute Budget Design",
+          "definition": "Стратегия распределения вычислительных ресурсов между контрактами в системе. TVM имеет ограничение на максимальный gas_limit одной транзакции. Сложные операции необходимо декомпозировать на цепочку сообщений, каждое из которых укладывается в лимит. Проектирование бюджета определяет, сколько работы выполняет каждый контракт.",
+          "example": "// Проблема: слишком много вычислений в одном вызове\n// gas_limit = 1,000,000 gas units\n\n// Тяжёлая операция: пересчёт 1000 позиций\n// Не влезает в один вызов!\n\n// Решение: continuation-паттерн\ncontract BatchProcessor {\n    processed: Int = 0;\n    \n    receive(msg: Process) {\n        let batch = 50; // обработать порцию\n        // ... обработка 50 элементов ...\n        self.processed += batch;\n        if (self.processed < total) {\n            send(/* сообщение самому себе */)\n        }\n    }\n}",
+          "relatedLessons": [
+            { "title": "Модель газа", "slug": "06-gas-optimization/01-gas-model" },
+            { "title": "Экономика контрактов", "slug": "06-gas-optimization/03-contract-economics" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "defi-security",
+      "name": "DeFi Design и Security",
+      "terms": [
+        {
+          "term": "DEX/AMM паттерны проектирования",
+          "termEn": "DEX/AMM Design Patterns",
+          "definition": "Архитектурные паттерны для децентрализованных бирж на TON, адаптированные к асинхронной модели. Включают: Router-Pool-Vault архитектуру, CPMM (Constant Product) и StableSwap формулы, управление ликвидностью через LP-токены. Ключевое отличие от EVM-DEX: отсутствие атомарных мульти-контрактных вызовов.",
+          "example": "// Архитектура DEX на TON (DeDust-стиль):\n//\n// Factory → создаёт Pool по параметрам\n// Router  → маршрутизирует swap-запросы\n// Pool    → хранит ликвидность, выполняет swap\n// Vault   → хранит токены одного типа\n//\n// Swap flow:\n// User → Jetton.transfer → Pool.swap_notification\n// Pool → Vault.withdraw → User.transfer_notification\n//\n// В отличие от Uniswap: нет flashloan (async!)",
+          "relatedLessons": [
+            { "title": "Проектирование DEX/AMM", "slug": "07-defi-design/02-dex-amm-design" },
+            { "title": "Обзор DeFi", "slug": "07-defi-design/01-defi-overview" }
+          ]
+        },
+        {
+          "term": "Проектирование оракулов",
+          "termEn": "Oracle Integration Design",
+          "definition": "Архитектурные решения для интеграции внешних данных (цены, курсы, погода) в контракты TON. Из-за асинхронной модели оракул не может быть вызван синхронно — данные запрашиваются через сообщения с задержкой. Паттерны: push-оракул (обновляет данные периодически), pull-оракул (по запросу), гибридный с кешированием.",
+          "example": "// Push-оракул (периодическое обновление):\ncontract PriceOracle {\n    prices: map<Int, PriceData>; // pair_id → price\n    lastUpdate: Int;\n    \n    receive(msg: UpdatePrice) {\n        require(sender() == self.updater, \"Not updater\");\n        self.prices.set(msg.pairId, PriceData{\n            price: msg.price,\n            timestamp: now()\n        });\n    }\n    \n    // Контракты запрашивают цену асинхронно\n    receive(msg: GetPrice) {\n        let data = self.prices.get(msg.pairId);\n        reply(PriceResponse{price: data.price});\n    }\n}",
+          "relatedLessons": [
+            { "title": "Проектирование оракулов", "slug": "07-defi-design/03-oracle-design" }
+          ]
+        },
+        {
+          "term": "Проектирование токенных систем",
+          "termEn": "Token System Design",
+          "definition": "Комплексный подход к проектированию токенных экосистем на TON: выбор стандарта (Jetton, SBT, NFT), дизайн эмиссии (фиксированная, инфляционная, дефляционная), механизмы распределения (airdrop, vesting, staking), governance-модели. Учитывает экономические стимулы и game theory.",
+          "example": "// Проектирование токеномики DAO:\n//\n// Эмиссия: 1,000,000 токенов (фиксированная)\n// Распределение:\n//   40% — community (vesting 4 года)\n//   25% — team (cliff 1 год, vesting 3 года)\n//   20% — treasury (управляется DAO)\n//   15% — liquidity mining\n//\n// Governance: 1 токен = 1 голос\n// Порог создания пропозала: 10,000 токенов\n// Кворум: 10% supply",
+          "relatedLessons": [
+            { "title": "Проектирование токенных систем", "slug": "08-token-design/01-token-system-design" }
+          ]
+        },
+        {
+          "term": "Security-First проектирование",
+          "termEn": "Security-First Design",
+          "definition": "Методология проектирования, при которой безопасность закладывается на этапе архитектуры, а не добавляется позже. Включает: threat modeling для каждого потока сообщений, проверку всех граничных условий, protection against reentrancy (через actor model), валидацию газа, проверку bounce и excess-сообщений.",
+          "example": "// Чек-лист безопасности для каждого контракта:\n// □ msg_value >= required_gas + forward_fees\n// □ sender() проверяется в каждом receive\n// □ bounce обработан для каждого send\n// □ Integer overflow невозможен\n// □ Excess возвращается отправителю\n// □ Replay protection (seqno или query_id)\n// □ Нет зависимости от block.timestamp\n// □ Код обновляемости защищён multisig",
+          "relatedLessons": [
+            { "title": "Безопасность и обновляемость", "slug": "11-security/01-security-upgradability" }
+          ]
+        },
+        {
+          "term": "Паттерны обновляемости",
+          "termEn": "Upgradability Patterns",
+          "definition": "Архитектурные подходы к обновлению кода контрактов TON после деплоя. В отличие от Ethereum proxy-паттернов, TON позволяет прямую замену кода контракта. Паттерны: прямое обновление (owner вызывает set_code), голосование DAO, timelock с задержкой, emergency multisig. Каждый паттерн балансирует между гибкостью и безопасностью.",
+          "example": "// Паттерн: Timelock-обновление\ncontract Upgradable {\n    pendingCode: Cell? = null;\n    upgradeAt: Int = 0;\n    \n    receive(msg: ProposeUpgrade) {\n        require(sender() == self.admin, \"Not admin\");\n        self.pendingCode = msg.newCode;\n        self.upgradeAt = now() + 86400; // 24h delay\n    }\n    \n    receive(msg: ExecuteUpgrade) {\n        require(now() >= self.upgradeAt, \"Too early\");\n        require(self.pendingCode != null, \"No pending\");\n        nativeSetCode(self.pendingCode!!);\n    }\n}",
+          "relatedLessons": [
+            { "title": "Безопасность и обновляемость", "slug": "11-security/01-security-upgradability" },
+            { "title": "Кейсы", "slug": "07-defi-design/04-case-studies" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "production-miniapps",
+      "name": "Production и Mini Apps",
+      "terms": [
+        {
+          "term": "Архитектура Mini Apps",
+          "termEn": "Mini Apps Architecture Design",
+          "definition": "Проектирование Telegram Mini Apps как фронтенда для TON-контрактов. Архитектура включает три слоя: Mini App UI (React/Vue в WebView), backend (API-сервер для off-chain логики), on-chain (смарт-контракты). Ключевые решения: разделение логики между слоями, стратегия подключения кошелька через TON Connect, кеширование on-chain данных.",
+          "example": "// Трёхслойная архитектура Mini App:\n//\n// Слой 1: Telegram WebView (Mini App)\n//   React + TON Connect UI\n//   Показывает UI, подписывает транзакции\n//\n// Слой 2: Backend API\n//   Кеширование on-chain данных\n//   Индексация событий\n//   Push-уведомления\n//\n// Слой 3: TON Smart Contracts\n//   Бизнес-логика и хранение\n//   Обработка платежей",
+          "relatedLessons": [
+            { "title": "Архитектура Mini Apps", "slug": "09-mini-apps/01-mini-apps-architecture" }
+          ]
+        },
+        {
+          "term": "Проектирование платёжных каналов",
+          "termEn": "Payment Channel Design",
+          "definition": "Layer-2 решение для масштабирования микроплатежей в TON. Два участника открывают канал on-chain, обмениваются подписанными состояниями off-chain и закрывают канал с финальным балансом on-chain. Проектирование включает: протокол обновления состояний, механизм dispute resolution, стратегию определения timeout и защиту от мошенничества.",
+          "example": "// Жизненный цикл платёжного канала:\n//\n// 1. Открытие (on-chain)\n//    Alice deploy ChannelContract с залогом 100 TON\n//    Bob подтверждает участие с залогом 100 TON\n//\n// 2. Off-chain обмен (мгновенно, бесплатно)\n//    State #1: Alice=90, Bob=110 (подписано обоими)\n//    State #2: Alice=85, Bob=115 (подписано обоими)\n//\n// 3. Закрытие (on-chain)\n//    Публикация финального state + challenge period\n//    Распределение: Alice=85, Bob=115",
+          "relatedLessons": [
+            { "title": "Платёжные каналы", "slug": "10-payment-channels/01-payment-channels" }
+          ]
+        },
+        {
+          "term": "Паттерны production-мониторинга",
+          "termEn": "Production Monitoring Patterns",
+          "definition": "Стратегии наблюдения за системой контрактов в production. Включают: мониторинг балансов контрактов, отслеживание цепочек сообщений, алертинг на аномальные транзакции, индексация событий для аналитики. В TON мониторинг сложнее, чем в EVM, из-за асинхронности и отсутствия event logs.",
+          "example": "// Мониторинг DEX в production:\n//\n// 1. Balance Monitor:\n//    Проверять баланс Pool каждые 30 сек\n//    Alert если < минимальной ликвидности\n//\n// 2. Transaction Monitor:\n//    Индексировать все входящие сообщения\n//    Отслеживать failed transactions\n//    Alert если error rate > 5%\n//\n// 3. TVL Tracker:\n//    Агрегировать балансы всех пулов\n//    Dashboard с историей TVL\n//    Alert при резком падении (> 20% за час)",
+          "relatedLessons": [
+            { "title": "Production Operations", "slug": "12-production-ops/01-production-operations" }
+          ]
+        },
+        {
+          "term": "Паттерны интеграции Capstone",
+          "termEn": "Capstone Integration Patterns",
+          "definition": "Методика объединения всех изученных паттернов System Design в единую DeFi-платформу. Capstone-проект демонстрирует сквозное проектирование: от требований до production-деплоя. Включает интеграцию контрактов (DEX + Lending + Governance), фронтенд (Mini App), мониторинг и документацию.",
+          "example": "// Capstone: DeFi платформа\n//\n// Контракты:\n//   DEX (Router + Pools) — модули 04, 07\n//   Token (Jetton + LP) — модуль 08\n//   Governance (DAO voting) — модуль 11\n//\n// Frontend:\n//   Telegram Mini App — модуль 09\n//   TON Connect — подключение кошелька\n//\n// Infrastructure:\n//   Indexer — отслеживание транзакций\n//   Monitor — алертинг и дашборды\n//   CI/CD — автодеплой контрактов",
+          "relatedLessons": [
+            { "title": "DeFi Platform Capstone", "slug": "13-capstone/01-defi-platform-capstone" }
+          ]
+        },
+        {
+          "term": "Стратегии развёртывания",
+          "termEn": "Deployment Strategies",
+          "definition": "Подходы к развёртыванию систем контрактов TON в production. Включают: порядок деплоя (сначала листовые контракты, затем координаторы), стратегии миграции (параллельная работа старой и новой версии), canary-деплой (ограниченный трафик на новую версию), blue-green деплой (мгновенное переключение через Router).",
+          "example": "// Порядок деплоя DEX-системы:\n//\n// Фаза 1: Deploy базовых контрактов\n//   1. JettonMaster (LP токены)\n//   2. Vault контракты\n//   3. Pool контракты\n//\n// Фаза 2: Deploy координаторов\n//   4. Router (ссылается на Pool-ы)\n//   5. Factory (создаёт новые Pool-ы)\n//\n// Фаза 3: Настройка и верификация\n//   6. Инициализация ликвидности\n//   7. Тестовый swap\n//   8. Открытие публичного доступа",
+          "relatedLessons": [
+            { "title": "Production Operations", "slug": "12-production-ops/01-production-operations" },
+            { "title": "DeFi Platform Capstone", "slug": "13-capstone/01-defi-platform-capstone" }
+          ]
+        }
+      ]
+    }
+  ]
+}
