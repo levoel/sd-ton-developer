@@ -72,6 +72,13 @@
     "smart-contracts",
     "telegram-mini-apps"
   ],
+  "prerequisites": {
+    "courses": [
+      {"slug": "ton-blockchain", "level": "required"},
+      {"slug": "crypto-fundamentals", "level": "required"}
+    ],
+    "external": []
+  },
   "estimatedHours": 60,
   "pricing": {
     "type": "paid",
