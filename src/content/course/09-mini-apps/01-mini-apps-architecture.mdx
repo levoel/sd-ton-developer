@@ -96,6 +96,145 @@ Security:
   - Mini App не имеет доступа к private keys
 ```
 
+## TON Connect signData: off-chain подписи
+
+### Зачем не-транзакционная подпись
+
+В классическом TON Connect все взаимодействия — **транзакции**, которые отправляются on-chain и платят gas. Но многие сценарии не требуют on-chain footprint:
+
+- Подтверждение пользовательского intent на backend ("я согласен с условиями").
+- Подпись для off-chain auth (вход в dApp без cookie).
+- Создание подписи для off-chain ордера в DEX (signed limit order, executed позже).
+- Подтверждение действий в Mini App без on-chain записи.
+
+**signData** (TON Connect 3.4) позволяет dApp запросить у кошелька подпись произвольных данных. Это **не транзакция** — ничего не отправляется on-chain, gas не тратится. Но подпись криптографически верифицируется и привязана к адресу кошелька.
+
+### signData flow
+
+```
+signData request:
+
+1. Mini App → TON Connect SDK: signData({
+     type: "text",
+     text: "Confirm withdrawal of 100 USDT"
+   })
+2. SDK → Wallet (Tonkeeper, etc): show signing UI
+3. User confirms in wallet
+4. Wallet signs: ed25519(private_key, payload + domain + timestamp)
+5. SDK → Mini App: { signature, address, timestamp, domain, payload }
+6. Mini App → Backend: { signature, address, payload }
+7. Backend verifies signature off-chain (или передаёт в смарт-контракт для on-chain действия)
+```
+
+### Поддерживаемые типы данных
+
+| Тип | Использование |
+|-----|---------------|
+| **`text`** | Простое сообщение: "Confirm 2FA setup", "Sign in to MyApp" |
+| **`binary`** | Произвольные байты, обычно hash'ы или structured data |
+| **`cell`** | TON cell с TL-B schema — wallet может декодировать и показать содержимое пользователю |
+
+<Callout type="note">
+**signData генерирует подпись тем же ключом, что и транзакции**
+
+Тот же ed25519 private key, что подписывает on-chain транзакции, подписывает и signData. Но **signData payload не валиден как TON message** — кошелёк добавляет prefix/domain, который защищает от replay (нельзя превратить signData в реальную транзакцию). Это безопасно по дизайну.
+</Callout>
+
+### Design pattern: signed off-chain order
+
+```
+Off-chain limit order (DEX):
+
+User создаёт ордер: "Sell 100 TON for 350 USDT, expires 2026-05-01"
+
+Mini App:
+  payload = TL-B encode(ORDER_TYPE, amount_in, amount_out, expiry, nonce)
+  signature = signData(payload)
+  Submit к Order Book (off-chain backend)
+
+Solver/Matcher (off-chain):
+  Match orders, prepare execution
+  При фактическом execution:
+  Submit on-chain: signed_order + counterparty_signature → contract
+  Contract verifies подпись → executes swap
+
+Преимущество:
+  - User создал 1000 ордеров без 1000 транзакций
+  - Cancel = просто не подписывать execution; оригинальная подпись expires
+  - Только matched orders попадают on-chain → меньше gas
+```
+
+## Tonkeeper Battery: gasless transactions
+
+### Проблема: новый user без TON
+
+Чтобы совершить любую транзакцию на TON, пользователю нужен TON для оплаты gas. Но новый пользователь, пришедший через Telegram Mini App, **не имеет TON** — он пришёл, чтобы получить airdrop USDT, или купить NFT за Telegram Stars, или claim'ить reward в Mini App.
+
+Требование "сначала купи TON, чтобы оплатить gas" ломает onboarding для миллионов non-crypto пользователей.
+
+### Решение: third-party operator оплачивает gas
+
+**Tonkeeper Battery** — система, при которой:
+
+1. User держит USDT (или другой Jetton) в Tonkeeper.
+2. При транзакции wallet строит сообщение, которое включает **малую плату оператору в USDT**.
+3. **Третья сторона (relay/operator)** получает это сообщение, оплачивает gas в TON и пересылает on-chain.
+4. После выполнения — recipient получает USDT, оператор получает свою комиссию в USDT.
+
+```
+Battery flow (gasless USDT transfer):
+
+User → Wallet:
+  intent: send 100 USDT to Bob
+
+Wallet (W5 wallet contract):
+  build internal message:
+    output[0]: 100 USDT → Bob
+    output[1]: 0.1 USDT → Battery operator (fee)
+  sign with user's key
+
+Wallet → Battery API (off-chain):
+  signed message + payload
+
+Battery operator:
+  validate message
+  pay TON gas from operator's TON balance
+  broadcast to TON
+
+On-chain:
+  Bob receives 100 USDT
+  Operator receives 0.1 USDT (compensates gas + margin)
+  User: 0 TON balance change
+```
+
+### Что делает W5 wallet
+
+Tonkeeper Battery работает благодаря **wallet contract version 5 (W5)** — стандарту wallet'а, который TON Core и Tonkeeper финализировали в июле 2024:
+
+- **Plugins/extensions**: W5 поддерживает делегирование операций и подписку на сервисы (gasless transactions — один из плагинов).
+- **Multi-output messages**: до 255 outgoing messages в одной транзакции.
+- **Signed by user key, but can be paid by anyone**: the W5 design позволяет, чтобы gas платил не подписант, а relayer.
+
+### Design implications для Mini App
+
+| Сценарий | Без Battery | С Battery |
+|----------|------------|-----------|
+| **Onboarding non-crypto user** | Купи TON → потом claim | Сразу claim в Mini App |
+| **USDT-native dApp** | Нужно держать TON для gas | Достаточно USDT |
+| **Subscription payments** | Каждый месяц проверять баланс TON | Авто-charge в USDT |
+| **Mass-market mini-app** | High drop-off на "купи gas TON" | Smooth onboarding |
+
+<Callout type="tip">
+**Battery + signData + Mintless = идеальный onboarding**
+
+Комбинация трёх паттернов даёт frictionless UX для нового пользователя:
+1. **Mintless airdrop** — токены "появляются" без mint фазы.
+2. **Battery** — первый transfer/claim не требует TON для gas.
+3. **signData** — подпись для off-chain действий не тратит gas.
+
+Это превращает Mini App в инструмент для миллионов non-crypto пользователей. Архитектурно — закладывайте все три паттерна в дизайн с самого начала.
+</Callout>
+
 ## Scaling Mini Apps
 
 ### Challenge: миллионы пользователей

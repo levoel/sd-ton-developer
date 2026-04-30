@@ -124,6 +124,155 @@ Emergency Upgrade:
   → Post-emergency: audit + post-mortem required
 ```
 
+## SDK и Indexer Landscape (2026)
+
+### SDK эволюция: tonweb deprecated → @ton/core + @ton/ton
+
+В 2020-2023 основным JS/TS SDK для TON был **tonweb**. Сейчас **tonweb deprecated** в пользу современной модульной экосистемы:
+
+```
+SDK эволюция:
+
+[deprecated]  tonweb              -- одна большая библиотека, legacy
+[modern]      @ton/core           -- core types: Cell, Address, BoC, BitString
+              @ton/ton            -- Wallet contracts, providers, helpers
+              @ton/crypto         -- крипто примитивы (key derivation, signing)
+              @ton/test-utils     -- testing helpers
+```
+
+**Что использовать в 2026**:
+
+| Задача | Пакет |
+|--------|-------|
+| Парсинг/построение Cell, BoC, Address | `@ton/core` |
+| Wallet operations, RPC client | `@ton/ton` |
+| Mnemonic, key derivation, signing | `@ton/crypto` |
+| Тесты контрактов | `@ton/sandbox` + `@ton/test-utils` |
+
+```typescript
+// Современный stack:
+import { Address, beginCell, Cell } from "@ton/core";
+import { TonClient, WalletContractV5R1 } from "@ton/ton";
+import { mnemonicToPrivateKey } from "@ton/crypto";
+
+const client = new TonClient({ endpoint: "https://toncenter.com/api/v2/jsonRPC" });
+```
+
+<Callout type="warning">
+**Не пишите новый код на tonweb**
+
+Если у вас существующий проект на tonweb — он продолжит работать, но миграция на `@ton/core` + `@ton/ton` рекомендуется при следующем major refactor. Все новые tutorials, examples, blueprints используют `@ton/*`. Найти TypeScript-разработчика с опытом tonweb становится всё сложнее.
+</Callout>
+
+### Highload Wallet v5: для bulk operations
+
+Для операций, которые требуют **массовой отправки** (airdrops, batch payouts, indexer-bots) нужен специализированный wallet contract:
+
+| Wallet | Use case | Status |
+|--------|----------|--------|
+| **W5 (regular)** | User wallets, до 255 outputs/tx, gasless support (Battery) | Default для новых установок |
+| **Highload V3** | Production-grade bulk operations (airdrop, payout) | Stable, рекомендуется |
+| **Highload V2** | Legacy bulk wallet | Deprecated |
+| **V3R2/V4R2** | Legacy regular wallets | Maintenance only |
+
+**Highload v5 (Wallet V5)** объединяет regular и highload pattern: до 255 outgoing messages в одной транзакции, plugin система, gasless via W5. Для большинства случаев в 2026 — это default.
+
+```
+Highload airdrop pattern (W5 / Highload V3):
+
+Off-chain:
+  recipients = load_recipients()  // 1M addresses
+  batch_size = 250  // up to 255 outputs per W5 tx
+  for batch in chunks(recipients, batch_size):
+    msgs = build_outputs(batch)
+    tx = wallet.createTransfer({ messages: msgs })
+    sign and send
+
+Throughput: ~250 transfers per ~1-2 seconds (Catchain 2.0)
+1M transfers: ~4000 batches → ~2-3 hours total
+```
+
+### Indexer landscape
+
+Production dApp нуждается в **индексере** — backend, который парсит блоки TON и предоставляет structured query API. На рынке несколько решений:
+
+```
+Indexer & API провайдеры:
+
+[Hosted, public API]
+  TON Center v2/v3      -- Foundation-supported, public RPC + indexer
+  TonAPI v2             -- Tonkeeper, high-level abstractions (Jetton/NFT objects)
+  
+[Self-hosted, open-source]
+  ton-index-go          -- TON Center's Go-based indexer (используется toncenter.com)
+  Anton                 -- Apache 2.0 Go indexer (anton.tools)
+  OpenTonAPI            -- open-source variant TonAPI v2 (от Tonkeeper)
+  ton-indexer (Python)  -- legacy reference indexer
+```
+
+### Сравнение для системного дизайна
+
+| Решение | License | Когда выбирать |
+|---------|---------|----------------|
+| **TON Center (hosted)** | Public free + paid | Стартап, MVP — никакой инфраструктуры |
+| **TonAPI (hosted)** | Free tier + paid | High-level objects: Jetton, NFT, transactions с decoded payloads |
+| **ton-index-go (self-hosted)** | Open-source | Кастомные SQL-запросы, высокий RPS, полный контроль |
+| **Anton (self-hosted)** | Apache 2.0 | Альтернатива ton-index-go, активная community |
+| **OpenTonAPI (self-hosted)** | Open-source | Хочется TonAPI semantics, но on-prem |
+
+### Когда переходить на self-hosted
+
+Stage-by-stage migration:
+
+```
+Phase 1 (MVP, < 100 RPS):
+  Hosted TON Center / TonAPI public endpoints
+  Free tier достаточен
+  
+Phase 2 (Growth, 100-1000 RPS):
+  Hosted с paid plan (TON Center pro / TonAPI pro)
+  Дешевле, чем self-hosted
+  
+Phase 3 (Scale, > 1000 RPS):
+  Self-hosted ton-index-go или Anton
+  Custom SQL-индексы под ваши queries
+  Контроль над latency
+  
+Phase 4 (Critical infrastructure):
+  Multi-region self-hosted + fallback на public API
+  Disaster recovery
+```
+
+<Callout type="tip">
+**Indexer vs Liteclient — разные слои**
+
+Liteclient читает текущее состояние контракта (балансы, get-методы). Indexer хранит **историю** транзакций и сообщений. Для аналитики и user-facing dashboards нужен indexer; для real-time get-методов — liteclient. Production dApp использует оба.
+</Callout>
+
+### TonAPI v2: high-level abstractions
+
+В отличие от raw RPC (TON Center), **TonAPI v2** предоставляет высокоуровневые объекты:
+
+```
+RPC (low-level, TON Center):
+  GET /getTransactions?address=EQ...&limit=10
+  → возвращает raw transactions с base64 cells
+  → нужно парсить cell вручную для понимания "это Jetton transfer"
+
+TonAPI v2 (high-level):
+  GET /v2/blockchain/accounts/EQ.../events?limit=10
+  → возвращает decoded events:
+    {
+      "type": "JettonTransfer",
+      "from": "EQ...alice",
+      "to": "EQ...bob",
+      "amount": "1000000",
+      "jetton_master": "EQ...usdt"
+    }
+```
+
+**Когда выбирать TonAPI**: Mini App / dashboard, где нужна быстрая разработка и понятные events. **Когда выбирать TON Center**: low-level контроль, когда нужно парсить сложный custom protocol.
+
 ## Deployment Checklist
 
 | Phase | Checks |

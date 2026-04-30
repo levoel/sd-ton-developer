@@ -1,0 +1,205 @@
+---
+title: "TON Roadmap 2026: Catchain 2.0, Rust Node, Accelerator"
+description: "Что меняется в архитектуре TON в 2026: sub-second finality, переход на Rust Node, программа Accelerator и implications для системного дизайна"
+order: 7
+difficulty: "intermediate"
+estimatedTime: 16
+topics: ["TON Roadmap", "Catchain 2.0", "Rust Node", "Cinder", "Accelerator", "Liteclient"]
+---
+
+# TON Roadmap 2026
+
+## Зачем разработчику системного дизайна знать roadmap
+
+Архитектурные решения, принятые в 2024-2025, могут стать **anti-pattern** в 2026, если не учесть изменения уровня платформы. В этом уроке разбираем три главных вектора эволюции TON в 2026: Catchain 2.0 (consensus), Rust Node (validator stack) и Accelerator program (mass adoption focus). Для каждого вектора — что это значит для дизайна dApp.
+
+<DiagramContainer title="TON Roadmap 2026: ключевые вехи" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <Tooltip content="Catchain 2.0 активирован на mainnet 9 апреля 2026 после фазового rollout валидаторов с 7 апреля. Block time снижен с ~2.5s до 200-400ms.">
+        <DataBox label="Q2 2026: Catchain 2.0 (live)" className="border-emerald-500/30 w-56">
+          <div className="text-xs space-y-1">
+            <div>Block time: 2.5s -&gt; 200-400ms</div>
+            <div>Sub-second finality</div>
+            <div>Step 1 of 7 в MTONGA</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+      <Tooltip content="Rust Node (кодовое название Cinder) — переписанная на Rust validator/full-node реализация. В 2026 идёт переход с C++ TON Node на Rust как production default.">
+        <DataBox label="2026: Rust Node (Cinder)" className="border-blue-500/30 w-56">
+          <div className="text-xs space-y-1">
+            <div>C++ TON Node -&gt; Rust</div>
+            <div>Containerized, Prometheus metrics</div>
+            <div>/healthz, /readyz endpoints</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+      <Tooltip content="Accelerator program — TON Foundation спонсирует команды, фокус на mass adoption через Telegram (1B+ users).">
+        <DataBox label="2026: Accelerator" className="border-purple-500/30 w-56">
+          <div className="text-xs space-y-1">
+            <div>TON Foundation grants</div>
+            <div>Mass adoption focus</div>
+            <div>Telegram-native dApps</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+## Catchain 2.0: sub-second finality
+
+### Что изменилось
+
+Catchain — это BFT-консенсус TON между валидаторами шарда. Версия 2.0 переработала шаги обмена блоками между валидаторами и устранила синхронизационные паузы, которые в Catchain 1.0 искусственно держали интервал блока около 2.5 секунд.
+
+```
+Было (Catchain 1.0):
+  Block time:        ~2.5 sec
+  Soft finality:     ~5 sec   (1-2 подтверждения)
+  Hard finality:     ~10 sec  (full BFT confirmation)
+
+Стало (Catchain 2.0, mainnet с 9 апреля 2026):
+  Block time:        200-400 ms (6x быстрее)
+  Soft finality:     ~600 ms-1 s
+  Sub-second finality на пользовательском пути
+```
+
+<Callout type="note">
+**Дата активации**
+
+Phased rollout валидаторов начался 7 апреля 2026, mainnet активация — 9 апреля 2026 в 15:00 UTC+8. На момент создания урока Catchain 2.0 уже работает в production. Это шаг 1 из 7 публичного roadmap "Make TON Great Again" (MTONGA).
+</Callout>
+
+### Implications для системного дизайна
+
+Sub-second блоки **не делают TON синхронным**. Cross-shard message по-прежнему пересекает границу шарда не быстрее, чем эта граница closes. Но реальная latency пользовательских флоу резко сокращается:
+
+| Сценарий | Catchain 1.0 (было) | Catchain 2.0 (стало) |
+|----------|---------------------|----------------------|
+| Single-shard tx confirmation | ~5-10 s | ~600 ms-1 s |
+| Cross-shard message hop (1 hop) | ~5 s | ~400-800 ms |
+| 4-hop DEX swap | ~20-25 s | ~3-5 s |
+| Mini App "click → on-chain confirmation" UX | "подождите" | near-instant |
+
+**Что переосмыслить в дизайне:**
+
+- **Polling intervals**: indexer/backend, который раз в 2.5 секунды проверял новые блоки, теперь имеет 6x больше работы. Прежде чем выбрать частоту опроса, посчитайте, нужен ли вам новый блок каждые 200ms или достаточно агрегировать.
+- **UX для DEX/lending**: 4-hop async swap раньше был "fire-and-wait" UX-паттерном (15-25 s). Теперь это близко к "instant confirmation" (3-5 s). Возможны новые UX-паттерны: показывать промежуточные статусы каждого hop в реальном времени.
+- **Game design (Mini Apps)**: real-time on-chain interactions становятся приемлемыми. Раньше "off-chain game + batched on-chain rewards" был необходимостью; теперь некоторые игровые действия можно вынести on-chain.
+
+<Callout type="warning">
+**Sub-second не значит atomic**
+
+Catchain 2.0 ускоряет блоки, но **не добавляет атомарности cross-contract calls**. Async-модель TON остаётся: каждое сообщение между контрактами — отдельная транзакция в отдельном блоке. Flash loans по-прежнему невозможны, синхронные многоконтрактные вызовы — тоже. Anti-pattern "синхронное мышление" остаётся anti-pattern'ом.
+</Callout>
+
+## Rust Node (Cinder): новая validator infrastructure
+
+### Зачем переписывают
+
+Оригинальная TON Node написана на C++. Это унаследованный код Telegram-эры, исторически с тесными зависимостями и непростой operational model: одна гигантская инстанция на validator, ручное управление состоянием.
+
+Rust Node (внутреннее имя — Cinder, бренд — TON Rust Node) — реализация full node на Rust, **протокол-совместимая** с C++ Node. Цели:
+
+- **Memory safety** на уровне языка (типичный аргумент Rust vs C++).
+- **Operational model для контейнеров**: stateless по возможности, отдельные процессы для разных subsystems.
+- **Production observability из коробки**: Prometheus metrics в 8 subsystems, `/healthz` и `/readyz` для оркестратора.
+- **Modular**: liteserver, validator, storage можно поднимать независимо.
+
+### Что это значит для разработчика
+
+Rust Node — это **не** новый L1, не fork и не breaking change на уровне протокола. С точки зрения смарт-контракта или dApp разницы между C++ Node и Rust Node нет. Разница — для тех, кто:
+
+- **Запускает self-hosted ноды** для индексации или liteserver: Rust Node ставится в Kubernetes/Docker гораздо проще, чем C++.
+- **Строит observability**: метрики Prometheus покрывают пропуск блоков, validator misbehavior, sync state — без необходимости парсить логи.
+- **Делает API-провайдер**: модульность позволяет горизонтально масштабировать только нужные subsystems (liteserver pool отдельно от storage).
+
+```
+TON Rust Node operational model:
+
+[Container: liteserver]      [Container: validator]    [Container: storage]
+   /healthz, /readyz             validator subsystem        archival data
+   prometheus :9100              prometheus :9101           prometheus :9102
+   horizontal scale              single instance            persistent volume
+        ^                              ^                          ^
+        |                              |                          |
+        +-------- shared block stream (P2P) --------+
+```
+
+<Callout type="tip">
+**Когда мигрировать на Rust Node**
+
+Если вы используете **public API провайдеров** (TonAPI, TON Center) — переход прозрачен, вас он не касается. Если у вас **self-hosted нода** для индексации/liteserver — миграция на Rust Node даёт лучшую оперативку (Prometheus, healthchecks) и меньше surprise при scale-out. На момент 2026 рекомендуется новые установки делать сразу на Rust Node; legacy C++ установки мигрировать постепенно.
+</Callout>
+
+## Liteclient оптимизации
+
+Liteclient — компонент, через который кошельки и lightweight dApps читают состояние TON, не запуская полную ноду. В 2025-2026 Liteclient получает несколько важных оптимизаций:
+
+- **Compact proofs**: меньше байт для proof-of-state по shard chain → быстрее открытие dApp на мобильном клиенте.
+- **Caching layer**: повторные get-method запросы кешируются в liteclient-pool; уменьшает RPS на ноды.
+- **Streaming subscriptions**: вместо polling по новому блоку — push-уведомления через WebSocket-подобный канал (уменьшает latency для real-time UI).
+
+Для системного дизайна это означает: при выборе SDK/провайдера в 2026 проверяйте, поддерживает ли он streaming-подписки. Если ваш dApp ожидает on-chain события (payment confirmation, NFT mint), streaming сократит latency UI с "опросить каждые 500ms" до "получить событие через ~50ms после блока".
+
+## Accelerator program: mass adoption focus
+
+TON Foundation Accelerator — это grant/incubator программа, которая:
+
+- Выделяет финансирование командам, строящим Telegram-native dApps (Mini Apps, боты с TON-payments).
+- Фокус — **mass adoption**, не trader-only DeFi. Цель — конвертировать часть из 1B+ Telegram users в TON users.
+- Преимущества: маркетинг через TON Foundation каналы, доступ к топ-кошелькам и платёжным интеграциям, mentorship от core TON команды.
+
+Для системного дизайна это меняет приоритеты: проекты, которые проектируют **в первую очередь UX для нон-крипто пользователя**, имеют больше шансов на support. Архитектурные решения, упрощающие onboarding (Mintless jettons, Tonkeeper Battery, signData без gas), — стратегически выгодны.
+
+## DApp implications: чек-лист проектирования в 2026
+
+<DiagramContainer title="2026 Design Considerations" className="my-6">
+<Grid columns={2}>
+  <Tooltip content="Sub-second блоки = другая UX-планка. То, что в 2024 принималось как 'медленный async', в 2026 ощущается медленным. Проектируйте интерфейсы под near-instant feedback.">
+    <DataBox label="UX: instant feedback">
+      Ожидание on-chain подтверждения раньше = "spinner на 10s". Сейчас = "1-3s без spinner-а или с прогрессом по hops". Перепроектируйте loading states.
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="Rust Node даёт нативные Prometheus метрики и healthchecks. Если вы строите production observability, можно перейти с custom log-parsing на стандартные Prometheus dashboards.">
+    <DataBox label="Ops: Prometheus-first">
+      Self-hosted ноды на Rust Node, dashboards в Grafana, alerting через стандартные правила. Меньше custom code в observability.
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="Streaming subscriptions через современный liteclient = push вместо polling. Уменьшает latency UI и нагрузку на RPC.">
+    <DataBox label="API: push, не polling">
+      Где возможно — streaming WebSocket вместо polling каждые 500ms. Лучше для UX, легче для RPC-провайдера.
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="Accelerator-критерий: проект решает реальную задачу для Telegram-аудитории, а не только для криптотрейдеров. Это меняет приоритеты в onboarding и UX.">
+    <DataBox label="UX: non-crypto user first">
+      Mintless airdrop вместо ручного claim. Tonkeeper Battery вместо требования держать TON для gas. signData вместо подписей через off-chain backend.
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="Async-модель остаётся. Catchain 2.0 ускорил блоки, но не добавил atomic cross-contract calls. Все правила про bounce, state machines, message chains остаются в силе.">
+    <DataBox label="Async: правила те же">
+      Sub-second не значит atomic. Bounce handlers обязательны. Flash loans по-прежнему невозможны.
+    </DataBox>
+  </Tooltip>
+  <Tooltip content="Catchain 2.0 — шаг 1 из 7. Дальше планируются дальнейшие апгрейды (см. публичные roadmap-апдейты). Архитектура должна быть готова к новым breaking changes на уровне consensus.">
+    <DataBox label="Roadmap: ещё 6 шагов">
+      Дальше — оптимизации stateless-валидации, дальнейшие изменения в shard split logic, новые primitives. Закладывайте upgradability в контракты.
+    </DataBox>
+  </Tooltip>
+</Grid>
+</DiagramContainer>
+
+## Что делать прямо сейчас
+
+| Категория | Действие |
+|-----------|----------|
+| **Indexer/backend** | Проверьте, что polling интервалы адекватны новому блок-time. Перейдите на streaming, где возможно. |
+| **Mini App UX** | Перепроектируйте loading states под sub-second confirmations. Не показывайте 10s spinner, если блок пришёл за 600ms. |
+| **Self-hosted nodes** | Новые установки — на Rust Node. Старые — план миграции в течение 2026. |
+| **Observability** | Стандартизируйте на Prometheus-метрики Rust Node. Меньше custom log parsing. |
+| **DeFi протоколы** | Атомарности нет, async-правила остаются. Но liquidation latency сократилась — botting экономика изменится. |
+
+<KnowledgeCheck>
+TON Roadmap 2026 — это эволюция платформы, не революция: async-модель, шардинг, Jetton-стандарт остаются. Меняются скорости (Catchain 2.0), validator stack (Rust Node), приоритеты Foundation (mass adoption через Accelerator). Системный дизайн в 2026 учитывает: sub-second UX, Prometheus-first observability, push-API вместо polling, и проектирование от non-crypto пользователя. В следующем уроке — language landscape: Tolk vs Tact vs FunC и как выбирать язык под задачу.
+</KnowledgeCheck>

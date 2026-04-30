@@ -229,6 +229,129 @@ User receives 102 TON
 Liquid staking tokens (stTON) используют **exchange rate** вместо rebase. 1 stTON ≠ 1 TON — rate растёт со временем. Это проще для интеграций (DeFi, wallets) чем rebase-токены (которые меняют balance).
 </Callout>
 
+## Advanced DeFi на TON (2025-2026)
+
+### EVAA Protocol: leveraged liquid staking
+
+EVAA — основной lending протокол на TON. После **TGE 3 октября 2025** ($EVAA token live на Binance Alpha, MEXC, STON.fi, Gate.io) протокол активно расширяет функциональность. К моменту TGE:
+- 300,000+ wallets onboarded
+- $1.4B+ суммарно в транзакциях
+- ATH $118M deposits
+
+**Новый primitive: leveraged liquid staking loop**:
+
+```
+Leveraged liquid staking (Tonstakers + EVAA):
+
+Step 1: User stakes 100 TON в Tonstakers → получает 100 tsTON
+Step 2: User supplies 100 tsTON в EVAA как collateral
+Step 3: User borrows ~70 TON против tsTON (LTV 70%)
+Step 4: User stakes 70 TON в Tonstakers → 70 tsTON
+Step 5: Loop: supply 70 tsTON, borrow 49 TON, stake → 49 tsTON, ...
+
+Effective leverage: ~3-5x on staking yield
+APY uplift: base ~5% staking → ~7.89% leveraged
+Borrow cost: ~0.37% APR (low благодаря TON pool dynamics)
+```
+
+<Callout type="warning">
+**Leverage loop = leveraged liquidation risk**
+
+При падении tsTON/TON exchange rate (теоретически возможно при slashing event у валидаторов), loop может попасть под liquidation. Health factor в leveraged loop падает быстрее, чем в "плоском" supply. Дизайн: автоматический deleveraging bot мониторит health и unwind'ит loop до критического порога.
+</Callout>
+
+### Storm Trade: perpetuals на TON
+
+**Storm Trade** — первый perpetual futures DEX на TON, работающий через Telegram Bot UI. Особенности дизайна:
+
+| Аспект | Storm Trade |
+|--------|-------------|
+| **Leverage** | До 50x (некоторые активы — до 100x) |
+| **Assets** | Crypto + RWA (forex, stocks, commodities) |
+| **Margin** | TON и USDT |
+| **Architecture** | Sequencer-based order execution — фиксирует цену в момент open |
+| **Slippage** | Zero slippage благодаря sequencer queue management |
+| **Social** | Squad tournaments, copy trading через Telegram |
+
+**Архитектурные импликации perpetuals на TON**:
+
+```
+Perpetual DEX architecture (Storm Trade style):
+
+Off-chain Sequencer:
+  - Receives signed orders (signData) from users
+  - Maintains order queue с FIFO ordering
+  - Computes mark price from oracle feeds (Pyth/RedStone)
+
+On-chain Execution:
+  - Sequencer batches matched orders → submits to Vault contract
+  - Vault: holds margin (USDT/TON), tracks positions
+  - Liquidation: off-chain bot monitors → triggers on-chain liquidation tx
+  
+Funding rate:
+  - Computed off-chain on schedule (например, каждые 8h)
+  - Applied on-chain как state update в Vault
+```
+
+**Trade-off**: sequencer = центр доверия (один оператор). Хотя сами funds custody on-chain, censorship resistance ниже, чем у full on-chain order book. Это типичный compromise для high-frequency DEX дизайна.
+
+### Pyth и RedStone: production-grade oracles на TON
+
+В 2025 две major oracle сети интегрировались с TON:
+
+**RedStone** — **первый** oracle с production feeds на TON (запуск в 2025). Поддерживает 70+ chains, 130+ клиентов. Также предоставляет smart contract templates с TON Connect integration.
+
+**Pyth Network** — расширил поддержку до 100+ блокчейнов в Q1 2025. На TON в Q2 2025 был проведён upgrade Pyth Oracle до v2 — поддержка более 3 price feeds в одной update transaction (адресует ограничение TON cell size 1023 бит через cell chain traversal).
+
+```
+Pyth Oracle v2 on TON:
+
+Cell chain для multi-feed update:
+  Cell 1: header + first 3 feeds
+    ref → Cell 2: next 3 feeds
+      ref → Cell 3: next 3 feeds
+        ref → ...
+
+Contract iterates через ref'ы для всех feeds → атомарный update многих цен в одной транзакции.
+```
+
+**Сравнение для системного дизайна**:
+
+| Аспект | Pyth | RedStone | Свой oracle |
+|--------|------|----------|-------------|
+| **Latency** | Pull-based, on-demand | Pull + push | Полный контроль |
+| **Coverage** | 1000+ feeds | 1200+ feeds | По вашим ассетам |
+| **Cost** | Pay-per-update | Subscription/template | Полная стоимость инфраструктуры |
+| **Trust model** | Wormhole + publishers | Decentralized data feeds | Ваше доверие |
+| **Best for** | Crypto-native DeFi | Crypto + RWA | Specialized dApps |
+
+<Callout type="note">
+**Когда не использовать готовый oracle**
+
+Готовый oracle (Pyth/RedStone) хорош для **общих market prices** (TON/USD, BTC/USD, ETH/USD). Если ваш протокол работает с **специфичными данными** — длиннохвостые токены без публичного price feed, RWA с custom evaluation, или off-chain events — придётся строить свой oracle. Storm Trade использует комбинацию: Pyth/RedStone для major assets, custom feeds для RWA.
+</Callout>
+
+### Design pattern: oracle fallback chain
+
+```
+Multi-oracle fallback:
+
+primary_price = Pyth.get_price(symbol)
+if (primary_price.staleness > 60s OR primary_price.confidence < threshold) {
+  secondary_price = RedStone.get_price(symbol)
+  if (secondary_price.staleness > 60s) {
+    // Critical: emergency pause
+    pause_trading()
+  } else {
+    use secondary_price
+  }
+} else {
+  use primary_price
+}
+```
+
+Production lending/perp протоколы **никогда не доверяют одному oracle**. Multi-oracle с staleness check + emergency pause — обязательный паттерн.
+
 ## Design Checklist для DeFi на TON
 
 | Аспект | Проверка |

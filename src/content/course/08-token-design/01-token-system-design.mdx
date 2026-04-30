@@ -77,6 +77,132 @@ Governance Jetton:
     └── vote() — checks balance via wallet verification
 ```
 
+## Mintless Jettons (TEP-177): airdrop без mint per recipient
+
+### Проблема: airdrop на миллионы адресов
+
+Классический Jetton airdrop требует **отдельной транзакции mint** для каждого получателя:
+
+```
+Классический airdrop на 10M адресов:
+  10M mint transactions
+  ~0.05 TON gas per mint = 500,000 TON суммарно
+  Месяцы исполнения
+  Огромная нагрузка на индексаторы и шарды
+```
+
+NotPixel, DOGS, HMSTR (Hamster Kombat) — все запускались с миллионами потенциальных получателей. Решение классическим mint было бы экономически невозможным.
+
+### Решение TEP-177: Merkle proof claim
+
+**TEP-177 Mintless Jettons** (расширение к TEP-74) — стандарт, позволяющий:
+
+1. **Off-chain compressed state**: всю таблицу `address → amount` для airdrop'а упаковать в Merkle tree.
+2. **On-chain хранится только Merkle root** (256 bit) в master контракте.
+3. **Lazy claim**: получатель сам предъявляет Merkle proof в момент первого использования jetton'а.
+4. **Без preliminary mint**: jetton wallet "появляется" на адресе пользователя только при первом claim/transfer.
+
+```
+Mintless airdrop architecture:
+
+Off-chain (provider):
+  Merkle Tree:
+    Leaf:    keccak(address || amount)  - per recipient
+    Node:    keccak(left || right)
+    Root:    256-bit hash
+
+  airdrop.json (in TON Storage / IPFS):
+    [
+      { "address": "EQ...alice", "amount": "1000", "proof": [...] },
+      { "address": "EQ...bob",   "amount": "500",  "proof": [...] },
+      ...
+    ]
+
+On-chain:
+  Jetton Master:
+    merkle_root: 256 bits
+    total_supply: N tokens
+    claimed_bitmap: optional (предотвращение double-claim)
+```
+
+### Claim flow
+
+```
+User claim flow (Mintless Jetton):
+
+1. User открывает Mini App / wallet
+2. Wallet проверяет airdrop.json: address есть → amount = X
+3. User инициирует первый transfer/claim
+4. Wallet формирует proof_path для своего адреса
+5. Send: transfer(amount=X, to=recipient, proof=proof_path)
+6. Jetton Wallet (deployed on-the-fly):
+   - verify Merkle proof → match against master.merkle_root
+   - mark claimed (bitmap or sub-contract)
+   - process transfer как обычный Jetton
+7. Master никогда не видит явного mint
+```
+
+<DiagramContainer title="Mintless Jetton: Merkle proof claim" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowRow className="gap-3 justify-center">
+      <Tooltip content="Off-chain: вся таблица address->amount упакована в Merkle tree. Хранится в TON Storage или IPFS, не on-chain.">
+        <DataBox label="Off-chain Merkle Tree" className="border-blue-500/30 w-56">
+          <div className="text-xs">10M leaf nodes; 256-bit root</div>
+        </DataBox>
+      </Tooltip>
+      <Tooltip content="On-chain: только 256-bit root в master контракте. Storage cost — константа независимо от 10M / 100M получателей.">
+        <DataBox label="Master: stores root" className="border-emerald-500/30 w-44">
+          <div className="text-xs">merkle_root only</div>
+        </DataBox>
+      </Tooltip>
+    </FlowRow>
+    <Arrow direction="down" />
+    <FlowRow className="gap-3 justify-center">
+      <Tooltip content="User формирует proof_path (log2(N) узлов) и предъявляет его при первом claim/transfer.">
+        <DataBox label="User: claim with proof" className="border-purple-500/30 w-56">
+          <div className="text-xs">proof_path = O(log N) hashes</div>
+        </DataBox>
+      </Tooltip>
+      <Tooltip content="Jetton Wallet деплоится on-the-fly при первом claim, верифицирует Merkle proof и затем работает как обычный Jetton wallet.">
+        <DataBox label="Wallet: verify + deploy" className="border-orange-500/30 w-44">
+          <div className="text-xs">Lazy materialization</div>
+        </DataBox>
+      </Tooltip>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+### Production examples
+
+| Проект | Получателей | Tooling |
+|--------|-------------|---------|
+| **NotCoin (мультивариант)** | 35M+ | Запустили волну mass minting на TON |
+| **DOGS** | 17M+ адресов | Reference mintless setup |
+| **HMSTR (Hamster Kombat)** | 131M+ users in funnel | Distribution через мультихоп |
+| **NotPixel** | миллионы | Mintless distribution |
+
+### Design implications
+
+| Аспект | Преимущество Mintless |
+|--------|----------------------|
+| **Cost** | Storage cost — константа O(1), не O(N) |
+| **Time-to-launch** | Airdrop запускается мгновенно (нет очереди mint-ов) |
+| **Indexer load** | Нет миллионов mint-транзакций для парсинга |
+| **User UX** | Claim происходит "в момент использования", не отдельным шагом |
+| **Sybil resistance** | Snapshot off-chain → можно применить любые фильтры до публикации root |
+
+### Trade-offs
+
+- **Доступность airdrop.json**: если файл с proof'ами потерян (TON Storage/IPFS pin исчез) — пользователи не могут построить proof. Решение: **dual storage** (TON Storage + IPFS + project CDN).
+- **Computational cost верификации**: Merkle proof verification on-chain — O(log N) hashes. Для 10M получателей это ~24 hash операции — приемлемо по gas.
+- **Replay protection**: master должен tracking-овать claimed status (через bitmap или sub-contracts), иначе double-claim.
+
+<Callout type="note">
+**TEP-177 совместим с TEP-74 и TEP-89**
+
+Mintless Jetton — **не заменяет** стандартный Jetton, а **расширяет** его. После claim wallet работает идентично TEP-74 — те же transfer, burn, balance. Кошельки и DEX, не знающие про TEP-177, продолжают работать как раньше.
+</Callout>
+
 ## NFT Collection Design
 
 ### Metadata Standards

@@ -1,0 +1,336 @@
+---
+title: "Language Landscape: Tolk vs Tact vs FunC"
+description: "Как выбрать язык контрактов на TON в 2026: FunC (legacy), Tact 1.6.x (high-level), Tolk 1.0 (default) — comparison matrix, migration FunC → Tolk, decision tree"
+order: 8
+difficulty: "intermediate"
+estimatedTime: 18
+topics: ["Tolk", "Tact", "FunC", "Smart Contract Languages", "Migration", "Gas Optimization"]
+---
+
+# Language Landscape на TON
+
+## Три языка, одна VM
+
+Все смарт-контракты на TON компилируются в **TVM bytecode**. Языки — это разные front-end'ы поверх одной TVM. От выбора языка зависят: developer experience, скорость разработки, размер итогового bytecode и расход gas.
+
+<DiagramContainer title="TON Smart Contract Languages (2026)" className="my-6">
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4">
+    <Tooltip content="FunC — оригинальный язык TON, низкоуровневый, C-подобный с reverse Polish notation в выражениях. Legacy. Все production-контракты эпохи 2020-2024 написаны на FunC.">
+      <DataBox label="FunC (legacy)" className="border-slate-500/30">
+        <div className="text-xs space-y-1">
+          <div>Низкоуровневый, C-подобный</div>
+          <div>Stack-based семантика TVM exposed</div>
+          <div>Эра 2020-2024: ВСЁ написано на FunC</div>
+          <div className="text-slate-400 mt-1">Stable, но устаревает</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Tact — высокоуровневый язык от TonStudio, синтаксис как TypeScript/Rust. Generics, lifecycle hooks, message receivers. Удобен для быстрого прототипирования.">
+      <DataBox label="Tact 1.6.x" className="border-blue-500/30">
+        <div className="text-xs space-y-1">
+          <div>High-level, TypeScript-подобный</div>
+          <div>Generics, lifecycle hooks</div>
+          <div>OOP-style: traits, message receivers</div>
+          <div className="text-blue-400 mt-1">Для быстрого DX</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Tooltip content="Tolk 1.0 (Jul 2025) — официальный default от TON Foundation. Замена FunC. Сохраняет низкоуровневую модель, но добавляет nullable types, smart casts, enums. 30-50% gas savings vs FunC.">
+      <DataBox label="Tolk 1.0 (default)" className="border-emerald-500/30">
+        <div className="text-xs space-y-1">
+          <div>Default since Jul 2025</div>
+          <div>Nullable types, smart casts, enums</div>
+          <div>30-50% gas savings vs FunC</div>
+          <div className="text-emerald-400 mt-1">Рекомендуется для нового кода</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+  </div>
+</DiagramContainer>
+
+## FunC: оригинал и legacy
+
+FunC — язык, на котором написана вся первая волна TON-контрактов: системные кошельки, Jetton-стандарт, NFT-коллекции, основные DEX/lending протоколы (STON.fi, DeDust, EVAA).
+
+### Свойства FunC
+
+```
+function add(int a, int b) inline_ref {
+  return a + b;
+}
+
+() recv_internal(int balance, int msg_value, cell in_msg, slice in_msg_body) impure {
+  ;; FunC: низкоуровневый, явный stack
+  slice cs = in_msg.begin_parse();
+  int op = cs~load_uint(32);
+  int query_id = cs~load_uint(64);
+  ...
+}
+```
+
+- **Стек TVM exposed**: программист часто думает в терминах stack manipulation.
+- **Минимум абстракций**: нет classes, нет generics, нет null-types в современном смысле.
+- **Полный контроль над gas**: можно оптимизировать каждый opcode, но требует понимания TVM.
+- **Verbose**: типичный Jetton-контракт — 500+ строк FunC, где Tolk-эквивалент — 200-300.
+
+### Когда FunC всё ещё актуален
+
+- **Существующий production код**: переписывать работающий контракт ради нового языка — бессмысленный риск.
+- **Когда нужен максимальный контроль**: для очень gas-критичных контрактов (high-frequency trading on-chain) FunC даёт самый низкий floor по расходу gas — но Tolk компилятор приближается к этому floor'у.
+- **Учебные цели**: FunC объясняет, как работает TVM. Понимание FunC помогает понимать, что именно делает Tolk-компилятор.
+
+## Tact: high-level язык
+
+Tact — независимый высокоуровневый язык, разработанный TonStudio. Синтаксис вдохновлён TypeScript и Rust:
+
+```
+contract Counter {
+  count: Int as uint64;
+
+  init(seed: Int) {
+    self.count = 0;
+  }
+
+  receive("increment") {
+    self.count += 1;
+  }
+
+  get fun count(): Int {
+    return self.count;
+  }
+}
+```
+
+### Свойства Tact 1.6.x
+
+- **OOP-style контракты**: `contract`, traits, inheritance.
+- **Generics** (1.6.x): дженерики для функций и trait'ов.
+- **Lifecycle hooks**: `init`, `receive("text-message")`, `bounced`, `external`.
+- **Message receivers**: `receive(msg: MyMessage)` с автоматическим парсингом TL-B.
+- **Strict typing**: optional types через `?`, nullable безопасность.
+
+### Trade-offs Tact
+
+| Плюсы | Минусы |
+|-------|--------|
+| Очень быстрый ramp-up для TypeScript/Rust developer | Compiler-generated code не всегда оптимален по gas |
+| Высокая читаемость, меньше boilerplate | Меньше production-проверки, чем у FunC/Tolk |
+| Trait-система упрощает Jetton/NFT экстеншны | Часть низкоуровневых оптимизаций недоступна |
+| Хорош для прототипа, education, MVP | Для high-stakes production — backporting на Tolk/FunC иногда оправдан |
+
+### Когда выбирать Tact
+
+- **Прототип / MVP**: вы быстро хотите проверить идею, gas-расход не критичен.
+- **Education**: учить контракты на Tact легче, чем на FunC.
+- **Bot-style контракты**: простые receive-логики без heavy state.
+- **Команда из TypeScript/Rust разработчиков**: меньше cognitive overhead.
+
+## Tolk 1.0: новый default
+
+Tolk 1.0 был выпущен TON Foundation в **июле 2025** и официально позиционируется как **default язык для новых смарт-контрактов** на TON. Tolk — это эволюция FunC: сохраняет низкоуровневую модель и контроль над TVM, но добавляет современную типовую систему.
+
+### Что нового vs FunC
+
+```
+// Tolk: nullable types, smart casts, enums
+enum Status { active, paused, deprecated }
+
+fun processMessage(opt: int?, status: Status): int {
+  // Smart cast: компилятор знает, что внутри ветки opt не null
+  if (opt != null) {
+    return opt + 1;  // opt здесь имеет тип int, не int?
+  }
+  return 0;
+}
+```
+
+**Ключевые отличия от FunC:**
+
+- **Nullable types** (`int?`, `slice?`): explicit nullability, компилятор требует null-check перед использованием.
+- **Smart casts**: после `if (x != null)` компилятор автоматически суживает тип.
+- **Enums**: `enum Status { active, paused }` вместо магических констант.
+- **Type aliases и generics**: `type UserId = int;`
+- **Структуры с типизированными полями** вместо raw slice manipulation.
+- **Improved error messages**: компилятор объясняет ошибки по-человечески.
+
+### Gas savings: 30-50%
+
+Команда TON Foundation опубликовала бенчмарк (`tolk-bench`), сравнивающий идентичную функциональность на FunC и Tolk:
+
+| Тип контракта | FunC gas | Tolk gas | Экономия |
+|---------------|----------|----------|----------|
+| Jetton transfer (basic) | baseline | -30 to -40% | значительная |
+| NFT transfer | baseline | -30 to -50% | существенная |
+| DEX swap (single hop) | baseline | -35 to -45% | существенная |
+| Custom heavy logic | baseline | -30 to -50% | существенная |
+
+Источник экономии — оптимизатор Tolk умеет лучше:
+- Вкладывать функции, которые в FunC требовали явного `inline`/`inline_ref`.
+- Reuse stack values вместо повторного push.
+- Удалять dead code на уровне CFG, а не наивно по AST.
+
+<Callout type="note">
+**30-50% gas savings — это реальное снижение стоимости транзакции для конечного пользователя**
+
+Если ваш Jetton transfer стоил пользователю 0.05 TON gas, на Tolk будет 0.025-0.035 TON. Для high-volume контрактов (Jetton wallets, миллионы транзакций) это превращается в значимый total cost reduction для экосистемы.
+</Callout>
+
+### Tolk также удобнее писать
+
+```
+// FunC: Jetton transfer (упрощённо)
+() recv_internal(int balance, int msg_value, cell in_msg, slice in_msg_body) impure {
+  slice cs = in_msg.begin_parse();
+  int flags = cs~load_uint(4);
+  if (flags & 1) { return (); }
+  slice sender = cs~load_msg_addr();
+  int op = in_msg_body~load_uint(32);
+  int query_id = in_msg_body~load_uint(64);
+  if (op == op::transfer) {
+    int amount = in_msg_body~load_coins();
+    slice dst = in_msg_body~load_msg_addr();
+    ...
+  }
+}
+
+// Tolk: то же самое
+fun onInternalMessage(msg: InternalMessage) {
+  if (msg.bounced) { return; }
+  match (msg.body) {
+    Transfer => |t| {
+      // t.amount и t.destination типизированы
+      ...
+    }
+  }
+}
+```
+
+## Comparison matrix
+
+| Аспект | FunC | Tact 1.6.x | Tolk 1.0 |
+|--------|------|------------|----------|
+| **Статус (2026)** | Legacy, поддерживается | Active, third-party | Default, рекомендуется |
+| **Уровень абстракции** | Низкий | Высокий | Средний (низ + types) |
+| **Стиль** | C-like, stack-aware | OOP, TypeScript-like | C-like + modern types |
+| **Gas efficiency** | Очень высок (manual) | Средний (compiler-gen) | Очень высок (auto-opt) |
+| **Nullable types** | Нет | Да | Да |
+| **Smart casts** | Нет | Частично | Да |
+| **Generics** | Нет | Да (1.6.x) | Да |
+| **Enums** | Магические константы | Да | Да |
+| **Pattern matching** | Нет | Частично | Да |
+| **Tooling (LSP, fmt)** | Зрелое, но базовое | Активное развитие | Активное развитие |
+| **Production track record** | 5+ лет | 1-2 года | <1 года, но Foundation-backed |
+| **Размер сообщества** | Большое (legacy) | Среднее | Растущее (default) |
+| **FunC/Tolk совместимость** | Native | Не совместим | Migration tools |
+| **Ramp-up time для TypeScript dev** | Долго | Очень быстро | Средне |
+| **Когда выбирать** | Поддержка legacy | Прототип, MVP, education | Новый production-код |
+
+## Migration: FunC → Tolk
+
+TON Foundation выпустила Tolk 1.0 с **полным набором миграционных tools**:
+
+- **Migration CLI**: `tolk migrate ./contract.fc` — автоматический транслит FunC → Tolk с сохранением семантики.
+- **Tolk-bench**: репозиторий с reference Jetton/NFT/Wallet контрактами в обоих языках для сравнения.
+- **Compatibility mode**: Tolk-проект может линковать FunC-модули и наоборот, что упрощает поэтапную миграцию.
+
+### Стратегия миграции для существующего проекта
+
+```
+Этап 1: Tooling
+  - Установить Tolk compiler
+  - Настроить blueprint (или аналог) для Tolk-проекта
+  - Параллельно держать FunC build в CI
+
+Этап 2: Non-critical контракты первыми
+  - Test contracts, dev tools, internal helpers
+  - Проверить production-pipeline без риска
+
+Этап 3: Новый код только на Tolk
+  - Все новые контракты пишутся на Tolk с самого начала
+  - Old код остаётся на FunC до планового рефактора
+
+Этап 4: Critical миграция (по необходимости)
+  - Если контракт получает major upgrade — заодно мигрировать на Tolk
+  - Если работает и не требует изменений — не трогать (если работает, не чини)
+```
+
+<Callout type="warning">
+**Не мигрируйте production-контракты ради миграции**
+
+Если у вас работающий Jetton master с миллионами транзакций — миграция на Tolk требует полного нового аудита. Риск введения regression > выгода от 30% gas savings, если контракт уже задеплоен и работает. Мигрируйте FunC → Tolk **только при следующем major upgrade**, когда контракт всё равно требует нового аудита.
+</Callout>
+
+## Decision Tree: какой язык выбрать
+
+<DiagramContainer title="Decision Tree: язык контракта на TON" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <Tooltip content="Стартовая точка — у вас новый контракт, который нужно написать в 2026.">
+      <DataBox label="Новый контракт в 2026" className="border-slate-500/30 w-full text-center">
+        <div className="text-xs">С чего начать?</div>
+      </DataBox>
+    </Tooltip>
+    <Arrow direction="down" />
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <Tooltip content="Прототип, hackathon, education, MVP без production-рисков. Команда привыкла к TypeScript/Rust. Gas optimization не критична.">
+        <DataBox label="Tact" className="border-blue-500/30 w-44">
+          <div className="text-xs space-y-1">
+            <div>Прототип / MVP</div>
+            <div>Education</div>
+            <div>Bot-style контракты</div>
+            <div>TypeScript-команда, fast DX</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+      <Tooltip content="Production-контракт, который пойдёт в mainnet. Любая стандартная задача — Jetton, NFT, DEX, lending. По умолчанию выбирайте Tolk.">
+        <DataBox label="Tolk 1.0" className="border-emerald-500/30 w-44">
+          <div className="text-xs space-y-1">
+            <div>Production mainnet</div>
+            <div>Jetton/NFT/DEX/lending</div>
+            <div>Gas-критичные контракты</div>
+            <div>Default выбор в 2026</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+      <Tooltip content="Только если поддерживаете существующий FunC код, или нужен экстремальный manual gas tuning под конкретный TVM-сценарий, или интеграция с FunC-only legacy экосистемой.">
+        <DataBox label="FunC" className="border-slate-500/30 w-44">
+          <div className="text-xs space-y-1">
+            <div>Maintenance существующего</div>
+            <div>Manual gas tuning</div>
+            <div>Legacy FunC экосистема</div>
+            <div>Учебные цели (TVM)</div>
+          </div>
+        </DataBox>
+      </Tooltip>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+### Quick rules of thumb
+
+| Сценарий | Язык |
+|----------|------|
+| Production Jetton/NFT/DEX в 2026 | **Tolk 1.0** |
+| Hackathon, прототип за выходные | **Tact** |
+| Education, изучение TVM | **FunC** (для понимания) → **Tolk** (для практики) |
+| Поддержка существующего STON.fi-style контракта | **FunC** (не трогать работающее) |
+| Gas-критичный high-frequency контракт | **Tolk** (auto-opt) или **FunC** (manual) |
+| Команда без TVM-опыта, fast time-to-market | **Tact** для MVP, потом **Tolk** для prod |
+
+## Implications для системного дизайна
+
+Выбор языка — **не только developer experience**, это часть архитектурного решения:
+
+- **Cost basis**: 30-50% gas savings на каждой транзакции — это рыночное преимущество high-volume протокола. Lending или DEX, написанные на Tolk, физически дешевле для пользователя.
+- **Security audit cost**: новые языки имеют меньше готовых аудит-чеклистов. Tolk быстро нагоняет; Tact ещё в процессе.
+- **Talent pool**: FunC-разработчиков больше (5+ лет рынка), Tolk-разработчиков меньше, но входной порог ниже для FunC-программиста.
+- **Tooling maturity**: для production важна стабильность IDE-плагинов, debugger-а, тест-фреймворка. В 2026 Tolk быстро дорастает до уровня FunC.
+
+<Callout type="tip">
+**Стратегия "FunC для понимания, Tolk для производства"**
+
+Изучите FunC настолько, чтобы понимать, что компилятор Tolk генерирует под капотом — это поможет с debugging и оптимизациями. Но **писать новый код** в 2026 — на Tolk. Это аналог "знай ассемблер, пиши на C" из 1990-х.
+</Callout>
+
+<KnowledgeCheck>
+Three languages, one VM: FunC (legacy, низкоуровневый), Tact (high-level, OOP-style), Tolk (default с июля 2025, типизированный low-level с 30-50% gas savings). Decision rule в 2026: новый production-код — Tolk; прототип/MVP — Tact; legacy — оставить на FunC. Migration tools от Foundation позволяют постепенный переход FunC → Tolk при major upgrades.
+</KnowledgeCheck>
