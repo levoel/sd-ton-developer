@@ -33,16 +33,16 @@ TON DeFi экосистема активно развивается. Ключе�
         <div className="text-[10px] text-slate-400">~4.5-5% APY</div>
       </DataBox>
     </Tooltip>
-    <Tooltip content="Мосты для cross-chain transfers: TONEthereum, TONBSC">
-      <DataBox label="Bridges" className="border-orange-500/30">
-        <div className="text-xs">TON Bridge</div>
-        <div className="text-[10px] text-slate-400">Cross-chain assets</div>
+    <Tooltip content="Cross-chain мосты на TON: LayerZero, Axelar, Symbiosis. Legacy Toncoin Bridge отключён 10 мая 2025.">
+      <DataBox label="Cross-chain" className="border-orange-500/30">
+        <div className="text-xs">LayerZero, Axelar, Symbiosis</div>
+        <div className="text-[10px] text-slate-400">+ нативные wrapped (tgBTC, USDe)</div>
       </DataBox>
     </Tooltip>
-    <Tooltip content="USDt на TON — крупнейший stablecoin с $1.4B circulation">
+    <Tooltip content="USDT на TON — основной stablecoin. Telegram Wallet — 150M+ пользователей, USDT Earn yield доступен.">
       <DataBox label="Stablecoins" className="border-yellow-500/30">
-        <div className="text-xs">USDt on TON</div>
-        <div className="text-[10px] text-slate-400">$1.4B+ circulation</div>
+        <div className="text-xs">USDT on TON</div>
+        <div className="text-[10px] text-slate-400">~$1.28B supply, 150M+ Wallet users</div>
       </DataBox>
     </Tooltip>
     <Tooltip content="Yield aggregators и vault strategies">
@@ -53,6 +53,12 @@ TON DeFi экосистема активно развивается. Ключе�
     </Tooltip>
   </div>
 </DiagramContainer>
+
+<Callout type="note">
+**Legacy Toncoin Bridge — deprecated**
+
+Оригинальный Toncoin Bridge (TON ↔ Ethereum / BNB) был официально отключён 10 мая 2025 после ~32K transfers и 100M+ TON moved (zero security incidents). На замену пришли general-purpose cross-chain провайдеры (LayerZero, Axelar, Symbiosis) и нативные wrapped tokens (tgBTC, USDe). При проектировании cross-chain интеграций в 2026 — закладывайте именно эти каналы, не legacy Toncoin Bridge.
+</Callout>
 
 ## Ключевые отличия DeFi на TON vs Ethereum
 

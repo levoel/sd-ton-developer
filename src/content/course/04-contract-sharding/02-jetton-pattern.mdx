@@ -1,6 +1,6 @@
 ---
 title: "Jetton Pattern: эталон шардированного токена"
-description: "Архитектура Jetton 2.0 — как TON решает проблему масштабируемых токенов"
+description: "Архитектура Jetton (TEP-74/89/177) — как TON решает проблему масштабируемых токенов"
 order: 2
 difficulty: "advanced"
 estimatedTime: 22
@@ -110,16 +110,29 @@ Jetton Standard разделяет state:
 
 Если Bob никогда не получал этот токен — его Wallet-контракт **не существует**. Sender (Alice's Wallet) включает `state_init` в сообщение — это **деплоит** Bob's Wallet автоматически. TON достаточно умён, чтобы проигнорировать `state_init`, если контракт уже задеплоен.
 
-## Jetton 2.0: оптимизации
+## Канонические Jetton-стандарты и эталонные реализации
 
-В 2025 году вышла обновлённая версия стандарта Jetton (Jetton 2.0) с оптимизациями:
+"Jetton 2.0" — это маркетинговое название, не отдельный стандарт. На практике production Jetton-контракт собирается из нескольких канонических TEP'ов:
 
-| Аспект | Jetton v1 | Jetton 2.0 |
-|--------|----------|-----------|
-| Transfer speed | 3 messages | 3 messages (оптимизированные) |
-| Contract calls | Standard | Streamlined (3x faster claiming) |
-| Gas efficiency | Baseline | Optimized state management |
-| Backward compatibility | — | Полная с v1 |
+| Стандарт | Что описывает | Реальность 2025-2026 |
+|----------|---------------|----------------------|
+| **TEP-74** | Базовый Jetton (Master + Wallet, transfer, internal\_transfer) | Обязательная база. Все Jetton'ы реализуют TEP-74. |
+| **TEP-89** | Discoverable Wallets (`provide_wallet_address` → `take_wallet_address`) | Стало де-факто обязательным: индексеры и DEX полагаются на on-chain discovery, без TEP-89 интеграция ломается. |
+| **TEP-177** | Mintless Jettons (Merkle airdrop, claim прямо в Wallet) | Используется массово в airdrop-проектах (DOGS, NotPixel, HMSTR) — claim без предварительного minting миллионам пользователей. |
+
+Эталонные репозитории, на которые стоит ориентироваться:
+
+| Репозиторий | Назначение |
+|-------------|-----------|
+| `ton-blockchain/stablecoin-contract` | Canonical reference Jetton (TEP-74 + TEP-89), реальная база для USDT-style стейблкоинов |
+| `ton-community/mintless-jetton` | Reference impl TEP-177 (TEP-74 + TEP-89 совместимый) |
+| `EmelyanenkoK/modern_jetton` | Gas-оптимизированный variant с улучшенной логикой forward-payload |
+
+<Callout type="tip">
+**Что реально стоит за "оптимизациями"**
+
+Когда в маркетинге говорят про "ускоренный Jetton" — обычно имеют в виду одно из двух: (1) переход на mintless схему (TEP-177), убирающую массовый pre-mint и снижающий нагрузку на сеть, или (2) обновлённый wallet code с оптимизированной gas-логикой (как в `stablecoin-contract` или `modern_jetton`). Базовый transfer flow остаётся 3-сообщенческим, как и в TEP-74.
+</Callout>
 
 ## Security: как Wallet верифицирует sender?
 

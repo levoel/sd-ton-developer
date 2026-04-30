@@ -7,95 +7,111 @@ estimatedTime: 18
 topics: ["STON.fi", "DeDust", "Case Study", "DEX Architecture"]
 ---
 
-# Case Studies: STON.fi и DeDust
+# Case Studies: STON.fi v2 и DeDust v2
 
-## STON.fi: архитектура
+К 2026 оба крупнейших DEX на TON прошли существенную архитектурную ревизию. Обе системы пришли к **vault-based** дизайну, но с разными нюансами реализации и наборами поддерживаемых пулов.
 
-STON.fi — крупнейший DEX на TON. Архитектурные решения:
+## STON.fi v2: архитектура
 
-### Design Decisions
+STON.fi v2 ввёл vault-based дизайн (раньше vault считался "фишкой DeDust"), расширенный набор pool types и обновлённый routing.
 
-| Решение | Выбор | Rationale |
-|---------|-------|-----------|
-| AMM formula | Constant product (x×y=k) | Простота, проверенность |
-| Pool per pair | Отдельный контракт | Sharding, isolation |
-| Router | Central router contract | Multi-hop, path finding |
-| LP token | Sharded (Jetton pattern) | Per-provider LP position |
-| Fee | 0.3% swap fee | Industry standard |
-| Oracle | On-chain TWAP | No external dependency |
+### Design Decisions (v2)
 
-### Architecture Layers
+| Решение | Выбор v2 | Rationale |
+|---------|----------|-----------|
+| AMM formulas | CPMM **+ CPI** (CP с concentrated liquidity) **+ WStable** (weighted stable) | Многообразие use-cases — от volatile до peg-pairs |
+| Контейнер ликвидности | **Vault per token** (single contract на актив) | Меньше Jetton Wallet'ов, общий accounting через factories |
+| LP positions | Single-sided deposits supported (через vault) | Снижает порог входа для LP |
+| Router | Обновлённый Router v2 + off-chain pathfinding | Multi-hop, RFQ-style маршрутизация |
+| Fee | Per-pool fee (0.01% / 0.05% / 0.3% и пр.) | Tier зависит от типа pool'а |
+
+### Pool types (v2)
+
+| Pool type | Формула | Use case |
+|-----------|---------|----------|
+| **CPMM** | x · y = k | Volatile pairs (TON/JET) |
+| **CPI** | CP с concentrated liquidity | Узкие диапазоны, высокая capital efficiency |
+| **WStable** | Stableswap (плоская зона) с весами и amplification A | Stable + слегка дивергирующие активы |
+
+### Architecture Layers (v2)
 
 ```
-STON.fi Architecture:
+STON.fi v2 Architecture:
 
 User Layer:
   └── Telegram Mini App / Web dApp
 
 SDK Layer:
-  └── @ston-fi/sdk (TypeScript)
-  └── Handles routing, gas estimation, message building
+  └── @ston-fi/sdk v2 (TypeScript)
+  └── Routing, gas estimation, message building, single-sided deposits
 
 Contract Layer:
-  ├── Router: create pools, route multi-hop swaps
-  ├── Pool[]: AMM logic, reserves, fee collection
-  └── LP Wallet[]: per-provider liquidity position (sharded)
+  ├── Router v2: creates pools, маршрутизация multi-hop
+  ├── Vault[]: один на актив (Jetton или native TON)
+  ├── Pool[]: per-pair логика (CPMM / CPI / WStable)
+  └── LP positions: per-provider (Jetton-style, sharded)
 
 Infrastructure:
-  ├── Indexer: track events, build analytics
-  └── API: price feeds, pool stats, routing optimization
+  ├── Indexer: track swaps, LP events, fees
+  └── API: price feeds, pool stats, routing
 ```
 
-## DeDust: архитектура
+## DeDust v2: архитектура
 
-DeDust — второй крупнейший DEX. Отличия от STON.fi:
+DeDust v2 продолжил vault-based линию и в **ноябре 2025** перешёл на **CPMM v2** как default для всех новых пулов.
 
-### Design Differences
+### Design Differences (v2 vs v2)
 
-| Аспект | STON.fi | DeDust |
-|--------|---------|--------|
-| **Vault pattern** | Pool хранит reserves напрямую | Vault contracts хранят токены |
-| **Native TON** | Special handling | Через wTON wrapper |
-| **Routing** | Router contract on-chain | Smart routing off-chain + on-chain execution |
-| **Fee tiers** | Single (0.3%) | Multiple (0.01%, 0.05%, 0.3%, 1%) |
+| Аспект | STON.fi v2 | DeDust v2 |
+|--------|-----------|-----------|
+| **Контейнер ликвидности** | Vault per token + Pool per pair | Vault per token + Pool per pair (factories per type) |
+| **Native TON** | Прямое обращение через native vault | Через wTON / native vault (в зависимости от pool) |
+| **Pool types** | CPMM, CPI, WStable | CPMM v2 (с 17 ноября 2025), Stable, Volatile, Boosted |
+| **LP positions** | Sharded LP (Jetton-style) + single-sided deposits | **Не Jetton-LP** в CPMM v2: позиции записаны в state самого pool-контракта (не передаются между кошельками) |
+| **Boosts** | — | Founder/dev incentives для CPMM v2 (с янв 2026) |
+| **Routing** | Off-chain pathfinding, on-chain execution | Off-chain pathfinding, on-chain execution |
 
-### DeDust Vault Pattern
+### Vault pattern (общий принцип у обоих)
 
 ```
-DeDust uses Vault pattern:
+Vault-based DEX (STON.fi v2 / DeDust v2):
 
-Vault_USDT: holds all USDT across all pools
-Vault_TON: holds all TON across all pools
-Pool: holds only accounting (reserves), not actual tokens
+Vault_USDT: holds all USDT across all pools (один Jetton Wallet)
+Vault_TON:  holds all TON across all pools
+Pool TON/USDT: accounting only (reserves, fee state, LP shares)
+Pool USDT/STON: accounting only
 
-Advantage: 
-  - Single Jetton Wallet per token (not per pool)
-  - Gas savings on token transfers
-  
+Advantage:
+  - Один Jetton Wallet на токен (vs N pools = N wallets)
+  - Дешёвле gas на multi-hop swap (меньше cross-shard hops)
+  - Чище shared liquidity между pool types
+
 Trade-off:
-  - More complex message flow
-  - Vault = single point of failure per token
+  - Сложнее message flow (vault ↔ pool authentication)
+  - Vault — concentration риск на актив (security/audit focus)
 ```
 
-<DiagramContainer title="DeDust Vault Pattern vs STON.fi Direct" className="my-6">
+<DiagramContainer title="STON.fi v2 vs DeDust v2 vault layout" className="my-6">
   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
-    <Tooltip content="STON.fi: каждый Pool имеет свой Jetton Wallet для каждого токена">
-      <DataBox label="STON.fi: Direct" className="border-blue-500/30">
+    <Tooltip content="STON.fi v2: Vault per token + Pool per pair (CPMM / CPI / WStable). LP — Jetton-style, поддерживается single-sided deposit.">
+      <DataBox label="STON.fi v2" className="border-blue-500/30">
         <div className="text-xs space-y-1">
-          <div>Pool TON/USDT → USDT Wallet</div>
-          <div>Pool TON/STON → STON Wallet</div>
-          <div>Pool USDT/STON → USDT Wallet (ещё один!)</div>
-          <div className="text-blue-400 mt-1">Простой, но дупликация wallets</div>
+          <div>Vault_TON, Vault_USDT, Vault_STON</div>
+          <div>Pool TON/USDT (CPMM)</div>
+          <div>Pool USDT/USDC (WStable)</div>
+          <div>Pool TON/STON (CPI)</div>
+          <div className="text-blue-400 mt-1">Sharded LP + single-sided LP</div>
         </div>
       </DataBox>
     </Tooltip>
-    <Tooltip content="DeDust: один Vault на токен, pools хранят только accounting">
-      <DataBox label="DeDust: Vault" className="border-emerald-500/30">
+    <Tooltip content="DeDust v2: Vault per token + factories per pool type. CPMM v2 (с 17 ноя 2025) хранит LP-позиции в state pool-контракта (не передаются между wallet'ами).">
+      <DataBox label="DeDust v2" className="border-emerald-500/30">
         <div className="text-xs space-y-1">
-          <div>Vault_USDT → один USDT Wallet</div>
-          <div>Pool TON/USDT → accounting only</div>
-          <div>Pool USDT/STON → accounting only</div>
-          <div className="text-emerald-400 mt-1">Эффективный, но сложнее</div>
+          <div>Vault_TON, Vault_USDT, Vault_DUST</div>
+          <div>Factory: CPMM v2 / Stable / Volatile</div>
+          <div>Pool TON/USDT (CPMM v2)</div>
+          <div>Boosts (founder rewards) поверх CPMM v2</div>
+          <div className="text-emerald-400 mt-1">LP-позиция в state pool-а</div>
         </div>
       </DataBox>
     </Tooltip>
@@ -104,9 +120,9 @@ Trade-off:
 
 ## Lessons Learned
 
-### 1. Simplicity wins for first version
+### 1. Simplicity wins for first version, vault wins on scale
 
-STON.fi начал с простого x×y=k и single fee tier. DeDust добавил complexity (vaults, multiple fees). Для первой версии протокола — simplicity reduces bugs and audit cost.
+STON.fi v1 стартовал с простого x×y=k и pool-per-pair (каждый pool — свой Jetton Wallet). DeDust сразу заложил vault. К v2 оба пришли к одной и той же базе — vault per token + pools-as-accounting — потому что на росте liquidity дублирование Jetton-кошельков на каждый pool становится дорогим (gas + cross-shard hops). Урок: для первой версии — простой direct pool, на scale — обязательный переход на vault.
 
 ### 2. Async requires careful state management
 
@@ -127,5 +143,5 @@ STON.fi начал с простого x×y=k и single fee tier. DeDust доб�
 Оптимальный маршрут multi-hop swap рассчитывается **off-chain** (SDK/API), а выполнение **on-chain**. On-chain routing слишком дорого (перебор путей = compute gas).
 
 <KnowledgeCheck>
-STON.fi и DeDust демонстрируют разные trade-offs одной задачи: direct pools vs vault pattern, single fee vs multi-tier, on-chain vs off-chain routing. При проектировании DeFi на TON: начинайте с простого, инвестируйте в async safety, и рассчитывайте gas estimation для UX. Следующий модуль: Token и NFT System Design.
+STON.fi v2 и DeDust v2 демонстрируют конвергенцию на vault-based архитектуре, но с разными нюансами: набор pool types (CPMM/CPI/WStable у STON.fi vs CPMM v2/Stable/Volatile/Boosted у DeDust), форма LP позиции (sharded Jetton vs in-pool state) и настройка фабрик. При проектировании DeFi на TON: начинайте с простого, готовьтесь к vault при росте, инвестируйте в async safety и рассчитывайте gas estimation для UX. Следующий модуль: Token и NFT System Design.
 </KnowledgeCheck>

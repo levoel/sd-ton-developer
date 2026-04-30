@@ -24,30 +24,30 @@ TON — не просто блокчейн для смарт-контракто�
         </div>
       </DataBox>
     </Tooltip>
-    <Tooltip content="Децентрализованное файловое хранилище. Аналог IPFS, но с экономическими стимулами через TON.">
+    <Tooltip content="Децентрализованное файловое хранилище. Production с апреля 2025 — incentive layer для providers (плата в Toncoin за pin).">
       <DataBox label="TON Storage" className="border-emerald-500/30">
         <div className="text-xs">
           <div>Decentralized file storage</div>
-          <div>Оплата за хранение в TON</div>
-          <div className="text-slate-400 mt-1">Для NFT media, dApp data</div>
+          <div>Mainnet + provider incentives</div>
+          <div className="text-slate-400 mt-1">NFT media, dApp data, Sites</div>
         </div>
       </DataBox>
     </Tooltip>
-    <Tooltip content="Анонимный прокси для доступа к TON сети. Защита от цензуры.">
-      <DataBox label="TON Proxy" className="border-purple-500/30">
+    <Tooltip content="TON Proxy 3.0 (Q1 2026) — auto-payments через μ-payment channels каждые 24h. Censorship-resistant overlay поверх ADNL.">
+      <DataBox label="TON Proxy 3.0" className="border-purple-500/30">
         <div className="text-xs">
-          <div>Anonymous network access</div>
-          <div>Censorship resistance</div>
-          <div className="text-slate-400 mt-1">Overlay network (ADNL)</div>
+          <div>Anonymous overlay (ADNL)</div>
+          <div>Auto-payments via μ-channels</div>
+          <div className="text-slate-400 mt-1">Censorship resistance</div>
         </div>
       </DataBox>
     </Tooltip>
-    <Tooltip content="Веб-сайты, доступные через TON Proxy. Полностью децентрализованный хостинг.">
+    <Tooltip content="TON Sites: hostable через ADNL напрямую или через TON Proxy bridges (для обычного браузера).">
       <DataBox label="TON Sites" className="border-orange-500/30">
         <div className="text-xs">
-          <div>Web3 websites on TON</div>
-          <div>Hosted on TON Storage</div>
-          <div className="text-slate-400 mt-1">Доступны через TON Proxy</div>
+          <div>Web3 sites через ADNL</div>
+          <div>+ HTTP gateway via TON Proxy</div>
+          <div className="text-slate-400 mt-1">Hosted on TON Storage</div>
         </div>
       </DataBox>
     </Tooltip>
@@ -85,13 +85,21 @@ alice.ton → EQBIhPuWmjT7fP-VomuTWseE8JNWv2q7QYfsVQ1IZwnMk8wL
 
 TON Storage решает проблему: **где хранить большие данные** (images, videos, documents), если on-chain storage слишком дорого?
 
+С апреля 2025 TON Storage работает в mainnet с **incentive layer**: storage providers получают оплату в Toncoin за pin/retrieval файлов. Это превращает Storage из "чёрновика типа IPFS" в production-сервис с экономическими гарантиями доступности — провайдеру невыгодно дропать данные, за которые ему платят.
+
 ```
 Стоимость хранения:
 
 On-chain (contract state): ~0.00036 TON/KB/год
-TON Storage:               значительно дешевле (off-chain с incentives)
-IPFS (без incentives):     бесплатно, но нет гарантий доступности
+TON Storage:               significantly cheaper, оплата провайдерам в Toncoin
+IPFS (без incentives):     "бесплатно", но без гарантий доступности
 ```
+
+<Callout type="note">
+**Production state (2025-2026)**
+
+TON Storage с incentive layer — mainnet с апреля 2025. Provider Reward Program субсидирует ранний bootstrapping. При проектировании архитектуры с TON Storage можно полагаться на SLA-уровень доступности — это не экспериментальная фича.
+</Callout>
 
 ### Design Pattern: On-chain pointer, Off-chain data
 
@@ -115,12 +123,43 @@ TON Proxy работает поверх **ADNL** (Abstract Datagram Network Laye
 - **Шифрование**: все данные зашифрованы
 - **Censorship resistance**: нет единой точки блокировки
 
+### TON Proxy 3.0: auto-payments через μ-payment channels
+
+В Q1 2026 TON Proxy получил поддержку **автоматических платежей** relays через **μ-payment channels** (микро-платёжные каналы). Каждые ~24 часа клиент settle'ит накопленный долг провайдерам через off-chain channel update — это даёт устойчивую экономику overlay-сети без on-chain транзакций на каждый запрос.
+
+```
+TON Proxy 3.0 payment flow:
+
+User ←──ADNL traffic──→ Relay (provider)
+            │
+            ↓ накапливается счётчик байтов
+            │
+            ↓ раз в ~24h
+            │
+       μ-payment channel update (off-chain)
+            │
+            ↓ периодически
+            │
+       on-chain settlement в Toncoin
+```
+
 ### Для System Design
 
 TON Proxy может быть полезен для:
 - dApps в регионах с блокировкой криптовалют
 - Private messaging поверх TON
 - Decentralized API endpoints
+
+## TON Sites: доступ через ADNL и через bridges
+
+TON Sites хостятся через **ADNL** напрямую (требует TON-aware client / native browser support) и/или через **TON Proxy gateways**, которые транслируют ADNL-запросы в обычный HTTP — так сайт открывается в любом браузере без специального клиента. Контент сайта при этом обычно лежит в TON Storage.
+
+```
+Two access paths:
+
+Native:  Browser (TON-aware) ──ADNL──→ TON Site (in TON Storage)
+Bridge:  Browser (any) ──HTTPS──→ TON Proxy gateway ──ADNL──→ TON Site
+```
 
 ## Архитектурный паттерн: Hybrid On-chain / Off-chain
 

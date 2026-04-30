@@ -36,7 +36,7 @@
       "type": "true-false",
       "question": "USDt на TON имеет circulation более $1 миллиарда, что делает его значимым stablecoin в экосистеме.",
       "correctAnswer": true,
-      "explanation": "По данным 2026 года, USDt на TON имеет net circulation $1.4B+ и более 26 миллионов транзакций. Это делает USDt основным stablecoin в TON DeFi экосистеме, используемым для торговли, lending и расчётов.",
+      "explanation": "По данным Q1 2026, объём stablecoin'ов на TON составляет ~$1.28B (USDT primary). Совмещённый с 150M+ пользователей Telegram Wallet и встроенным USDT Earn, это делает USDT основным stablecoin в TON DeFi экосистеме — для торговли, lending и расчётов.",
       "bloomLevel": "conceptual"
     }
   ]
