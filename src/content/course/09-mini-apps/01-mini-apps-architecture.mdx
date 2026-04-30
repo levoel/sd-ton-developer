@@ -208,3 +208,21 @@ Sybil resistance:
 <KnowledgeCheck>
 Mini App architecture: Telegram WebView (frontend) + Backend API (auth, state, logic) + TON Blockchain (payments, NFT, rewards). Key patterns: initData validation (security), off-chain game + on-chain rewards (scalability), TON Connect (wallet integration). При масштабировании: stateless API, Redis cache, async queues, CDN.
 </KnowledgeCheck>
+
+Системный дизайн Mini App опирается на конкретный API Telegram WebApp -- от initData и MainButton до lifecycle событий. Базовый разбор API и архитектуры WebView есть в курсе по TON.
+
+<CrossCourseRef
+  courseId="ton-blockchain"
+  lessonSlug="08-telegram-mini-apps/01-mini-app-architecture"
+  label="Telegram Mini Apps: архитектура"
+  preview="Архитектура Mini App: WebView, telegram-web-app.js, initData, MainButton/BackButton, жизненный цикл"
+/>
+
+Mini Apps 2.0 (2025) добавляет полноэкранный режим, motion-сенсоры и расширенный набор возможностей -- эти изменения важно учитывать при проектировании новых приложений.
+
+<CrossCourseRef
+  courseId="ton-blockchain"
+  lessonSlug="08-telegram-mini-apps/08-mini-apps-2-0"
+  label="Mini Apps 2.0: новые возможности"
+  preview="Полноэкранный режим, motion-сенсоры, geolocation, biometric auth и другие новинки Mini Apps 2.0"
+/>

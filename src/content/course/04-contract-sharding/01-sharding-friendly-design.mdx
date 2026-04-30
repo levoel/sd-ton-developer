@@ -146,3 +146,12 @@ DAO governance с 50 участниками не нужно шардироват
 <KnowledgeCheck>
 Sharding-friendly design — это не о шардах, а о **изоляции state**. Каждый пользователь = свой контракт = свой потенциальный шард. Deterministic addresses, code hash verification и idempotent operations — три инструмента, которые делают это безопасным. В следующем уроке: Jetton pattern — эталонная реализация sharded token.
 </KnowledgeCheck>
+
+Чтобы решения по sharding-friendly дизайну были основаны на реальной механике сети, полезно понимать, как устроены workchains и shardchains в TON: split/merge логика, hypercube routing, ограничения cross-shard сообщений.
+
+<CrossCourseRef
+  courseId="ton-blockchain"
+  lessonSlug="01-ton-architecture/03-workchains-sharding"
+  label="TON: workchains и shardchains"
+  preview="Как устроены workchains и shardchains, динамический split/merge и роутинг сообщений между шардами"
+/>

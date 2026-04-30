@@ -146,3 +146,12 @@ On-chain governance:
 <KnowledgeCheck>
 Security на TON: verify senders (deterministic addresses), handle bounces (every message), check overflows, bound storage, and plan for upgrades. Upgradability via set_code() (native TVM) + timelock for user protection. Audit before deployment — especially for DeFi with TVL.
 </KnowledgeCheck>
+
+Системные принципы безопасности удобно сверять с конкретным каталогом TON-уязвимостей: bounced messages, gas management, integer pitfalls, async race conditions, аудит-чеклист. Подробный разбор каждого класса -- в курсе по TON.
+
+<CrossCourseRef
+  courseId="ton-blockchain"
+  lessonSlug="10-security/01-bounced-messages"
+  label="TON security: bounced messages"
+  preview="Каталог TON-специфичных уязвимостей: bounce, gas, integer pitfalls, async race conditions, audit checklist"
+/>

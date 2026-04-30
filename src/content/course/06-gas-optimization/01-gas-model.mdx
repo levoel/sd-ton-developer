@@ -196,3 +196,12 @@ Network config parameters определяют gas prices. Валидаторы 
 <KnowledgeCheck>
 Gas model в TON: compute (TVM instructions) + forward (message delivery) + storage (state persistence). Storage — постоянный расход, compute и forward — per-transaction. При проектировании: считайте gas budget для всей message chain, минимизируйте messages и state size, не хардкодьте gas values.
 </KnowledgeCheck>
+
+Системные принципы gas-оптимизации лучше всего ложатся на конкретные FunC/Tolk-техники: какие инструкции TVM дёшевы, как переиспользовать cells, какие конструкции компилятор оптимизирует, а какие -- нет. Практический разбор -- в курсе по TON.
+
+<CrossCourseRef
+  courseId="ton-blockchain"
+  lessonSlug="04-smart-contracts-func/05-gas-optimization"
+  label="FunC/Tolk: оптимизация газа на практике"
+  preview="Конкретные приёмы экономии газа в FunC и Tolk: горячие инструкции TVM, переиспользование cells, layout state"
+/>

@@ -196,3 +196,12 @@ Storage Budget Checklist:
 <KnowledgeCheck>
 Cells — фундамент хранения данных на TON. 1023 bits + 4 references = минимальная единица. Storage fee = пропорционально cells. При проектировании: layout cells заранее, минимизируйте количество cells, рассчитайте storage budget. В следующем уроке: Bags of Cells (BoC) — как cells сериализуются для передачи по сети.
 </KnowledgeCheck>
+
+Cells -- одновременно структура данных и единица исполнения: TVM работает со стеком ячеек, а не с регистрами. Чтобы понимать, как именно cells "доезжают" от storage до выполнения и обратно, полезно посмотреть исполнение TVM на низком уровне.
+
+<CrossCourseRef
+  courseId="ton-blockchain"
+  lessonSlug="02-tvm-execution/05-tvm-stack-machine"
+  label="TVM: стек-машина и cells"
+  preview="Как TVM работает со стеком ячеек: загрузка, сериализация, потребление газа на парсинг и сборку cells"
+/>

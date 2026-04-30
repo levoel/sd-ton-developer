@@ -221,3 +221,12 @@ State: PROCESSING_SWAP
 <KnowledgeCheck>
 Actor Model в TON — это не абстракция, а реальный execution model. Каждое сообщение = отдельная транзакция. Изоляция state = sharding-friendly. Последовательная обработка = нет reentrancy. В следующем уроке: как проектировать message flows для сложных операций.
 </KnowledgeCheck>
+
+Системный взгляд на actor-model полезно дополнить пониманием низкоуровневого execution: как именно TVM исполняет контракт, как устроен стек, continuation-based control flow и взаимодействие со стеком ячеек.
+
+<CrossCourseRef
+  courseId="ton-blockchain"
+  lessonSlug="02-tvm-execution/01-actor-model"
+  label="TVM: actor model и исполнение"
+  preview="Как TVM исполняет контракт-актора: входные сообщения, стек ячеек, continuation, исходящие сообщения"
+/>
